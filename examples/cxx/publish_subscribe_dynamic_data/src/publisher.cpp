@@ -38,19 +38,19 @@ auto main() -> int {
                          .create()
                          .expect("successful publisher creation");
 
-    auto counter = 1;
+    auto counter = 0;
 
     while (node.wait(CYCLE_TIME).has_value()) {
-        counter += 1;
-
-        auto required_memory_size = (8 + counter) % 16; // NOLINT
+        auto required_memory_size = (counter % 16) + 1; // NOLINT
         auto sample = publisher.loan_slice_uninit(required_memory_size).expect("acquire sample");
         sample.write_from_fn([&](auto byte_idx) { return (byte_idx + counter) % 255; }); // NOLINT
 
         auto initialized_sample = assume_init(std::move(sample));
         send(std::move(initialized_sample)).expect("send successful");
 
-        std::cout << "Send sample " << counter << "..." << std::endl;
+        std::cout << "Send sample " << counter << " with " << required_memory_size << " bytes..." << std::endl;
+
+        counter++;
     }
 
     std::cout << "exit" << std::endl;
