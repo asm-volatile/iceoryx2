@@ -13,11 +13,13 @@
 #ifndef IOX2_LISTENER_HPP
 #define IOX2_LISTENER_HPP
 
+#include "file_descriptor.hpp"
 #include "iox/duration.hpp"
 #include "iox/expected.hpp"
 #include "iox/function.hpp"
 #include "iox/optional.hpp"
 #include "iox2/event_id.hpp"
+#include "iox2/file_descriptor.hpp"
 #include "iox2/internal/iceoryx2.hpp"
 #include "iox2/listener_error.hpp"
 #include "iox2/service_type.hpp"
@@ -79,6 +81,10 @@ class Listener {
     /// On error it returns [`ListenerWaitError`] is returned which describes the error
     /// in detail.
     auto blocking_wait_one() -> iox::expected<iox::optional<EventId>, ListenerWaitError>;
+
+    // TODO: instead of returning the FD directly, create a proxy object that can be accessed by e.g. 'unsafe()'
+    // function call; this proxy object would then give access to the FD
+    auto file_descriptor() -> iox::optional<FileDescriptor>;
 
   private:
     template <ServiceType>
