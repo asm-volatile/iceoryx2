@@ -233,6 +233,16 @@ pub mod details {
         }
 
         /// Returns the number of elements stored inside the vector
+        pub fn set_len(&mut self, len: usize) -> Result<(), ()> {
+            if len > self.capacity {
+                return Err(());
+            }
+
+            self.len = len;
+            Ok(())
+        }
+
+        /// Returns the number of elements stored inside the vector
         pub fn len(&self) -> usize {
             self.len
         }
@@ -641,6 +651,11 @@ impl<T, const CAPACITY: usize> FixedSizeVec<T, CAPACITY> {
     /// Returns the capacity of the vector
     pub fn capacity(&self) -> usize {
         self.state.capacity()
+    }
+
+    /// Set vector length.
+    pub fn set_len(&mut self, len: usize) -> Result<(), ()> {
+        self.state.set_len(len)
     }
 
     /// Returns the number of elements stored inside the vector
