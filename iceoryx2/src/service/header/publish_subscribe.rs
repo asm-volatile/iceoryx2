@@ -16,7 +16,7 @@
 //! use iceoryx2::prelude::*;
 //! use iceoryx2::service::header::publish_subscribe::Header;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! # let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
 //!     .publish_subscribe::<u64>()
@@ -31,11 +31,13 @@
 //! # }
 //! ```
 
+use iceoryx2_bb_derive_macros::ZeroCopySend;
+
 use crate::port::port_identifiers::UniquePublisherId;
 
 /// Sample header used by
 /// [`MessagingPattern::PublishSubscribe`](crate::service::messaging_pattern::MessagingPattern::PublishSubscribe)
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, ZeroCopySend)]
 #[repr(C)]
 pub struct Header {
     publisher_port_id: UniquePublisherId,
@@ -58,7 +60,7 @@ impl Header {
     /// Returns how many elements are stored inside the sample's payload.
     ///
     /// # Details when using
-    /// [`CustomPayloadMarker`](crate::service::builder::publish_subscribe::CustomPayloadMarker)
+    /// [`CustomPayloadMarker`](crate::service::builder::CustomPayloadMarker)
     ///
     /// In this case the number of elements relates to the element defined in the
     /// [`MessageTypeDetails`](crate::service::static_config::message_type_details::MessageTypeDetails).

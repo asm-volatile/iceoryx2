@@ -19,8 +19,8 @@ use iceoryx2_bb_system_types::{file_name::*, file_path::FilePath, path::Path};
 
 pub(crate) trait DynamicStorageConfiguration<T>: NamedConceptConfiguration {
     fn path_for_with_type(&self, value: &FileName) -> FilePath {
-        let mut path = *self.get_path_hint();
-        let type_hash = Sha1::new(std::any::type_name::<T>().as_bytes()).value();
+        let mut path = self.get_path_hint().clone();
+        let type_hash = Sha1::new(core::any::type_name::<T>().as_bytes()).value();
 
         fatal_panic!(from self, when path.add_path_entry(&self.get_prefix().into()),
                     "The path \"{}\" in combination with the prefix \"{}\" exceed the maximum supported path length of {} of the operating system.",
@@ -42,7 +42,7 @@ pub(crate) trait DynamicStorageConfiguration<T>: NamedConceptConfiguration {
     }
 
     fn extract_name_from_file_with_type(&self, value: &FileName) -> Option<FileName> {
-        let mut file = *value;
+        let mut file = value.clone();
 
         if !fatal_panic!(from self, when file.strip_prefix(self.get_prefix().as_bytes()),
                     "Stripping the prefix \"{}\" from the file name \"{}\" leads to invalid content.",
@@ -51,7 +51,7 @@ pub(crate) trait DynamicStorageConfiguration<T>: NamedConceptConfiguration {
             return None;
         }
 
-        let type_hash = Sha1::new(std::any::type_name::<T>().as_bytes()).value();
+        let type_hash = Sha1::new(core::any::type_name::<T>().as_bytes()).value();
 
         if !fatal_panic!(from self, when file.strip_prefix(type_hash.as_base64url().as_bytes()),
                     "Stripping the type hash \"{:?}\" from the file name \"{}\" leads to invalid content.",

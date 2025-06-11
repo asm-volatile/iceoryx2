@@ -1,10 +1,5 @@
 # Publish-Subscribe With User Header
 
-Before proceeding, all dependencies need to be installed. You can find
-instructions in the [C++ Examples Readme](../README.md).
-
-## Running The Example
-
 > [!CAUTION]
 > Every payload you transmit with iceoryx2 must be compatible with shared
 > memory. Specifically, it must:
@@ -13,6 +8,7 @@ instructions in the [C++ Examples Readme](../README.md).
 > * have a uniform memory representation, ensuring that shared structs have the
 >     same data layout
 > * not use pointers to manage their internal structure
+> * must be trivially destructible, see `std::is_trivially_destructible`
 >
 > Data types like `std::string` or `std::vector` will cause undefined behavior
 > and may result in segmentation faults. We provide alternative data types
@@ -27,12 +23,19 @@ incrementing number and the `CustomHeader`, which includes an additional version
 number and a timestamp. On the receiving end, the subscriber checks for new data
 every second and prints out the received payload and the user header.
 
+## How to Build
+
+Before proceeding, all dependencies need to be installed. You can find
+instructions in the [C++ Examples Readme](../README.md).
+
 First you have to build the C++ examples:
 
 ```sh
 cmake -S . -B target/ffi/build -DBUILD_EXAMPLES=ON
 cmake --build target/ffi/build
 ```
+
+## How to Run
 
 To observe this dynamic communication in action, open two separate terminals and
 execute the following commands:
@@ -53,8 +56,9 @@ Feel free to run multiple instances of the publisher or subscriber processes
 simultaneously to explore how iceoryx2 handles publisher-subscriber
 communication efficiently.
 
-You may hit the maximum supported number of ports when too many publisher or
-subscriber processes are running. Check the [iceoryx2 config](../../../config)
-to set the limits globally or refer to the
-[API of the Service builder](https://docs.rs/iceoryx2/latest/iceoryx2/service/index.html)
-to set them for a single service.
+> [!TIP]
+> You may hit the maximum supported number of ports when too many publisher or
+> subscriber processes are running. Check the
+> [iceoryx2 config](../../../config) to set the limits globally or refer to the
+> [API of the Service builder](https://docs.rs/iceoryx2/latest/iceoryx2/service/index.html)
+> to set them for a single service.

@@ -10,13 +10,17 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#![warn(clippy::alloc_instead_of_core)]
+#![warn(clippy::std_instead_of_alloc)]
+#![warn(clippy::std_instead_of_core)]
+
 //! Contains helper derive macros for iceoryx2.
 
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields};
+use syn::{parse_macro_input, Data, DeriveInput, Fields, LitStr};
 
 /// Implements the [`iceoryx2_bb_elementary::placement_default::PlacementDefault`] trait when all
 /// fields of the struct implement it.
@@ -24,7 +28,8 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields};
 /// ```
 /// use iceoryx2_bb_derive_macros::PlacementDefault;
 /// use iceoryx2_bb_elementary::placement_default::PlacementDefault;
-/// use std::alloc::{alloc, dealloc, Layout};
+/// use core::alloc::Layout;
+/// use std::alloc::{alloc, dealloc};
 ///
 /// #[derive(PlacementDefault)]
 /// struct MyLargeType {
@@ -98,3 +103,226 @@ pub fn placement_default_derive(input: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
+
+/// Implements the [`iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend`] trait when all fields of
+/// the struct implement it and the struct is annotated with `repr(C)`. A type name can be optionally
+/// set with the helper attribute `type_name`.
+///
+/// ```
+/// use iceoryx2_bb_derive_macros::ZeroCopySend;
+/// use iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend;
+///
+/// fn needs_zero_copy_send_type<T: ZeroCopySend>(_: &T) {}
+///
+/// #[repr(C)]
+/// #[derive(ZeroCopySend)]
+/// #[type_name("MyTypeName")]
+/// struct MyZeroCopySendStruct {
+///     val1: u64,
+///     val2: u64,
+/// }
+///
+/// let x = MyZeroCopySendStruct{
+///     val1: 23,
+///     val2: 4,
+/// };
+/// needs_zero_copy_send_type(&x);
+/// assert_eq!(unsafe { MyZeroCopySendStruct::type_name() }, "MyTypeName");
+///
+/// #[repr(C)]
+/// #[derive(ZeroCopySend)]
+/// #[type_name("GeometricShape")]
+/// enum Shape {
+///     Point,
+///     Circle(f64),
+///     Rectangle { width: f64, height: f64 },
+/// }
+///
+/// let shape1 = Shape::Point;
+/// let shape2 = Shape::Circle(5.0);
+/// let shape3 = Shape::Rectangle { width: 10.0, height: 20.0 };
+///
+/// needs_zero_copy_send_type(&shape1);
+/// needs_zero_copy_send_type(&shape2);
+/// needs_zero_copy_send_type(&shape3);
+/// assert_eq!(unsafe { Shape::type_name() }, "GeometricShape");
+/// ```
+#[proc_macro_derive(ZeroCopySend, attributes(type_name))]
+pub fn zero_copy_send_derive(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+    let struct_name = &ast.ident;
+
+    // check for type_name attribute
+    let attributes: &Vec<_> = &ast
+        .attrs
+        .iter()
+        .filter(|a| a.path().is_ident("type_name"))
+        .collect();
+    if attributes.len() > 1 {
+        panic!("Too many attributes provided for ZeroCopySend trait.");
+    }
+
+    let type_name_impl = match attributes.len() {
+        0 => {
+            quote! {
+                unsafe fn type_name() -> &'static str {
+                    core::any::type_name::<Self>()
+                }
+            }
+        }
+        _ => {
+            let type_name: LitStr = attributes[0]
+                .parse_args()
+                .expect("Wrong format for ZeroCopySend attribute. Please provide exactly one \"type_name\" in quotation marks.");
+            quote! {
+                unsafe fn type_name() -> &'static str {
+                    #type_name
+                }
+            }
+        }
+    };
+
+    // check for repr(C) attribute
+    let has_repr_c = &ast.attrs.iter().any(|a| {
+        a.path().is_ident("repr")
+            && a.parse_args::<syn::Meta>()
+                .ok()
+                .map(|meta| meta.path().is_ident("C"))
+                .unwrap_or(false)
+    });
+    if !has_repr_c {
+        panic!("`#[derive(ZeroCopySend)]` requires the type to be annotated with #[repr(C)]");
+    }
+
+    // implement ZeroCopySend
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+
+    let zero_copy_send_impl = match ast.data {
+        Data::Struct(ref data_struct) => match data_struct.fields {
+            Fields::Named(ref fields_named) => {
+                let field_inits = fields_named.named.iter().map(|f| {
+                    let field_name = &f.ident;
+                    // dummy call to ensure at compile-time that all fields of the struct implement ZeroCopySend
+                    quote! {
+                        iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend::__is_zero_copy_send(&self.#field_name);
+                    }
+                });
+
+                quote! {
+                    fn __is_zero_copy_send(&self) {
+                        #(#field_inits)*
+                    }
+
+                    #type_name_impl
+                }
+            }
+            Fields::Unnamed(ref fields_unnamed) => {
+                let field_inits = fields_unnamed.unnamed.iter().enumerate().map(|(i, _)| {
+                    let field_index = syn::Index::from(i);
+                    // dummy call to ensure at compile-time that all fields of the struct implement ZeroCopySend
+                    quote! {
+                        iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend::__is_zero_copy_send(&self.#field_index);
+                    }
+                });
+
+                quote! {
+                    fn __is_zero_copy_send(&self) {
+                        #(#field_inits)*
+                    }
+
+                    #type_name_impl
+                }
+            }
+            Fields::Unit => quote! {
+                #type_name_impl
+            },
+        },
+        Data::Enum(ref data_enum) => {
+            let variant_checks = data_enum.variants.iter().map(|variant| {
+                let variant_name = &variant.ident;
+
+                match &variant.fields {
+                    Fields::Named(fields) => {
+                        let field_checks = fields.named.iter().map(|f| {
+                            let field_name = &f.ident;
+                            // dummy call to ensure at compile-time that all fields of the variant implement ZeroCopySend
+                            quote! {
+                                Self::#variant_name { #field_name, .. } => {
+                                    iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend::__is_zero_copy_send(#field_name);
+                                }
+                            }
+                        });
+
+                        if fields.named.is_empty() {
+                            quote! {
+                                Self::#variant_name { .. } => {}
+                            }
+                        } else {
+                            quote! { #(#field_checks)* }
+                        }
+                    },
+                    Fields::Unnamed(fields) => {
+                        if fields.unnamed.is_empty() {
+                            quote! {
+                                Self::#variant_name => {}
+                            }
+                        } else {
+                            let field_names = (0..fields.unnamed.len())
+                                .map(|i| syn::Ident::new(&format!("field_{}", i), proc_macro2::Span::call_site()))
+                                .collect::<Vec<_>>();
+
+                            let field_pattern = if field_names.is_empty() {
+                                quote! {}
+                            } else {
+                                quote! { (#(#field_names),*) }
+                            };
+
+                            // dummy call to ensure at compile-time that all fields of the variant implement ZeroCopySend
+                            let field_checks = field_names.iter().map(|field_name| {
+                                quote! {
+                                    iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend::__is_zero_copy_send(#field_name);
+                                }
+                            });
+
+                            quote! {
+                                Self::#variant_name #field_pattern => {
+                                    #(#field_checks)*
+                                }
+                            }
+                        }
+                    },
+                    Fields::Unit => {
+                        quote! {
+                            Self::#variant_name => {}
+                        }
+                    }
+                }
+            });
+
+            quote! {
+                fn __is_zero_copy_send(&self) {
+                    match self {
+                        #(#variant_checks)*
+                    }
+                }
+
+                #type_name_impl
+            }
+        }
+        _ => {
+            return quote! {compile_error!("ZeroCopySend can only be implemented for structs and enums");}
+                .into();
+        }
+    };
+
+    let expanded = quote! {
+        unsafe impl #impl_generics iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend for #struct_name #ty_generics #where_clause {
+            #zero_copy_send_impl
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+#[cfg(doctest)]
+mod zero_copy_send_compile_tests;

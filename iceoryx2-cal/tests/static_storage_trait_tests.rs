@@ -12,6 +12,8 @@
 
 #[generic_tests::define]
 mod static_storage {
+    use core::sync::atomic::{AtomicU64, Ordering};
+    use core::time::Duration;
     use iceoryx2_bb_container::semantic_string::*;
     use iceoryx2_bb_posix::unique_system_id::UniqueSystemId;
     use iceoryx2_bb_system_types::file_name::FileName;
@@ -20,10 +22,8 @@ mod static_storage {
     use iceoryx2_cal::named_concept::*;
     use iceoryx2_cal::static_storage::StaticStorageCreateError;
     use iceoryx2_cal::static_storage::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Barrier;
     use std::sync::Mutex;
-    use std::time::Duration;
 
     /// The list all storage tests requires that all other tests are not interfering and therefore
     /// we cannot let them run concurrently.
@@ -332,7 +332,7 @@ mod static_storage {
 
         for _i in 0..NUMBER_OF_STORAGES {
             let storage_name = generate_name();
-            storage_names.push(storage_name);
+            storage_names.push(storage_name.clone());
 
             let mut content = "some \nfuu\n cont\tent".to_string();
             storages.push(
@@ -344,7 +344,7 @@ mod static_storage {
 
         for _i in 0..NUMBER_OF_LOCKED_STORAGES {
             let storage_name = generate_name();
-            locked_storage_names.push(storage_name);
+            locked_storage_names.push(storage_name.clone());
             locked_storages.push(Sut::Builder::new(&storage_name).create_locked().unwrap());
         }
 

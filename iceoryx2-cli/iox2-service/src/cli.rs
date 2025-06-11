@@ -17,6 +17,7 @@ use clap::Subcommand;
 use iceoryx2_cli::filter::MessagingPatternFilter;
 use iceoryx2_cli::help_template;
 use iceoryx2_cli::Format;
+use iceoryx2_cli::HelpOptions;
 
 #[derive(Parser)]
 #[command(
@@ -26,7 +27,7 @@ use iceoryx2_cli::Format;
     version = env!("CARGO_PKG_VERSION"),
     disable_help_subcommand = true,
     arg_required_else_help = false,
-    help_template = help_template("iox2 service", false),
+    help_template = help_template("iox2 service", HelpOptions::PrintCommandSection),
 )]
 pub struct Cli {
     #[clap(subcommand)]
@@ -57,10 +58,44 @@ pub struct DetailsOptions {
     pub filter: OutputFilter,
 }
 
+#[derive(Parser)]
+pub struct DiscoveryOptions {
+    #[clap(
+        short,
+        long,
+        default_value = "100",
+        help = "Update rate in milliseconds"
+    )]
+    pub rate: u64,
+
+    #[clap(long, help = "Do not publish discovered services")]
+    pub disable_publish: bool,
+
+    #[clap(long, default_value = "10", help = "The maximum number of subscribers")]
+    pub max_subscribers: usize,
+
+    #[clap(long, help = "Do not notify of discovered services")]
+    pub disable_notify: bool,
+
+    #[clap(long, default_value = "10", help = "The maximum number of listeners")]
+    pub max_listeners: usize,
+}
+
 #[derive(Subcommand)]
 pub enum Action {
-    #[clap(about = "List all services")]
+    #[clap(
+        about = "List all services",
+        help_template = help_template("iox2 service list", HelpOptions::DontPrintCommandSection)
+    )]
     List(ListOptions),
-    #[clap(about = "Show service details")]
+    #[clap(
+        about = "Show service details",
+        help_template = help_template("iox2 service details", HelpOptions::DontPrintCommandSection)
+    )]
     Details(DetailsOptions),
+    #[clap(
+        about = "Runs the service discovery service within a process", 
+        help_template = help_template("iox2 service discovery", HelpOptions::DontPrintCommandSection)
+    )]
+    Discovery(DiscoveryOptions),
 }

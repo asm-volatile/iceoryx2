@@ -89,7 +89,7 @@
 //! use iceoryx2_bb_container::queue::RelocatableQueue;
 //! use iceoryx2_bb_elementary::bump_allocator::BumpAllocator;
 //! use iceoryx2_bb_elementary::relocatable_container::RelocatableContainer;
-//! use std::ptr::NonNull;
+//! use core::ptr::NonNull;
 //!
 //! const QUEUE_CAPACITY:usize = 12;
 //! const MEM_SIZE: usize = RelocatableQueue::<u128>::const_memory_size(QUEUE_CAPACITY);
@@ -101,6 +101,8 @@
 //! unsafe { queue.init(&bump_allocator).expect("queue init failed") };
 //! ```
 //!
+use core::marker::PhantomData;
+use core::{alloc::Layout, fmt::Debug, mem::MaybeUninit};
 use iceoryx2_bb_elementary::allocator::{AllocationError, BaseAllocator};
 use iceoryx2_bb_elementary::bump_allocator::BumpAllocator;
 use iceoryx2_bb_elementary::math::unaligned_mem_size;
@@ -109,10 +111,9 @@ use iceoryx2_bb_elementary::placement_default::PlacementDefault;
 use iceoryx2_bb_elementary::pointer_trait::PointerTrait;
 pub use iceoryx2_bb_elementary::relocatable_container::RelocatableContainer;
 use iceoryx2_bb_elementary::relocatable_ptr::{GenericRelocatablePointer, RelocatablePointer};
+use iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend;
 use iceoryx2_bb_log::{fail, fatal_panic};
 use iceoryx2_pal_concurrency_sync::iox_atomic::IoxAtomicBool;
-use std::marker::PhantomData;
-use std::{alloc::Layout, fmt::Debug, mem::MaybeUninit};
 
 /// Queue with run-time fixed size capacity. In contrast to its counterpart the
 /// [`RelocatableQueue`] it is movable but is not shared memory compatible.
@@ -232,7 +233,7 @@ pub mod details {
         ) -> Result<(), AllocationError> {
             if self
                 .is_initialized
-                .load(std::sync::atomic::Ordering::Relaxed)
+                .load(core::sync::atomic::Ordering::Relaxed)
             {
                 fatal_panic!(
                     from "Queue::init()",
@@ -242,12 +243,12 @@ pub mod details {
 
             self.data_ptr.init(fail!(from "Queue::init", when allocator
                  .allocate(Layout::from_size_align_unchecked(
-                     std::mem::size_of::<T>() * self.capacity,
-                     std::mem::align_of::<T>(),
+                     core::mem::size_of::<T>() * self.capacity,
+                     core::mem::align_of::<T>(),
                  )), "Failed to initialize queue since the allocation of the data memory failed."
             ));
             self.is_initialized
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+                .store(true, core::sync::atomic::Ordering::Relaxed);
 
             Ok(())
         }
@@ -256,6 +257,8 @@ pub mod details {
             Self::const_memory_size(capacity)
         }
     }
+
+    unsafe impl<T: ZeroCopySend> ZeroCopySend for MetaQueue<T, GenericRelocatablePointer> {}
 
     impl<T> MetaQueue<T, GenericRelocatablePointer> {
         /// Returns the required memory size for a queue with a specified capacity
@@ -332,9 +335,9 @@ pub mod details {
         fn verify_init(&self, source: &str) {
             debug_assert!(
                 self.is_initialized
-                    .load(std::sync::atomic::Ordering::Relaxed),
+                    .load(core::sync::atomic::Ordering::Relaxed),
                 "From: MetaQueue<{}>::{}, Undefined behavior - the object was not initialized with 'init' before.",
-                std::any::type_name::<T>(), source
+                core::any::type_name::<T>(), source
             );
         }
 
@@ -395,7 +398,7 @@ pub mod details {
 
             let index = (self.start - self.len) % self.capacity;
             self.len -= 1;
-            let value = std::mem::replace(
+            let value = core::mem::replace(
                 &mut *self.data_ptr.as_mut_ptr().add(index),
                 MaybeUninit::uninit(),
             );
@@ -441,7 +444,7 @@ pub mod details {
         fn drop(&mut self) {
             if self
                 .is_initialized
-                .load(std::sync::atomic::Ordering::Relaxed)
+                .load(core::sync::atomic::Ordering::Relaxed)
             {
                 unsafe { self.clear_impl() }
             }
@@ -457,6 +460,8 @@ pub struct FixedSizeQueue<T, const CAPACITY: usize> {
     state: RelocatableQueue<T>,
     _data: [MaybeUninit<T>; CAPACITY],
 }
+
+unsafe impl<T: ZeroCopySend, const CAPACITY: usize> ZeroCopySend for FixedSizeQueue<T, CAPACITY> {}
 
 impl<T, const CAPACITY: usize> PlacementDefault for FixedSizeQueue<T, CAPACITY> {
     unsafe fn placement_default(ptr: *mut Self) {

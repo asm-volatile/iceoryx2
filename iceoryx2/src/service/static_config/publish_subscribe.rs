@@ -15,7 +15,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! let pubsub = node.service_builder(&"My/Funk/ServiceName".try_into()?)
 //!     .publish_subscribe::<u64>()
@@ -35,13 +35,15 @@
 
 use super::message_type_details::MessageTypeDetails;
 use crate::config;
+use iceoryx2_bb_derive_macros::ZeroCopySend;
 use serde::{Deserialize, Serialize};
 
 /// The static configuration of an
 /// [`MessagingPattern::PublishSubscribe`](crate::service::messaging_pattern::MessagingPattern::PublishSubscribe)
 /// based service. Contains all parameters that do not change during the lifetime of a
 /// [`Service`](crate::service::Service).
-#[derive(Debug, Clone, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq, ZeroCopySend, Serialize, Deserialize)]
+#[repr(C)]
 pub struct StaticConfig {
     pub(crate) max_subscribers: usize,
     pub(crate) max_publishers: usize,
@@ -71,6 +73,16 @@ impl StaticConfig {
             enable_safe_overflow: config.defaults.publish_subscribe.enable_safe_overflow,
             message_type_details: MessageTypeDetails::default(),
         }
+    }
+
+    pub(crate) fn required_amount_of_samples_per_data_segment(
+        &self,
+        publisher_max_loaned_data: usize,
+    ) -> usize {
+        self.max_subscribers
+            * (self.subscriber_max_buffer_size + self.subscriber_max_borrowed_samples)
+            + self.history_size
+            + publisher_max_loaned_data
     }
 
     /// Returns the maximum supported amount of [`Node`](crate::node::Node)s that can open the

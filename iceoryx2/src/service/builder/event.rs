@@ -20,8 +20,11 @@ use crate::service::port_factory::event;
 use crate::service::static_config::messaging_pattern::MessagingPattern;
 use crate::service::*;
 use crate::service::{self, dynamic_config::event::DynamicConfigSettings};
+use builder::RETRY_LIMIT;
 use iceoryx2_bb_log::{fail, fatal_panic};
+use iceoryx2_bb_posix::clock::Time;
 use iceoryx2_cal::dynamic_storage::DynamicStorageCreateError;
+use static_config::event::Deadline;
 
 use self::attribute::{AttributeSpecifier, AttributeVerifier};
 
@@ -43,6 +46,8 @@ pub enum EventOpenError {
     IncompatibleAttributes,
     /// Errors that indicate either an implementation issue or a wrongly configured system.
     InternalFailure,
+    /// The [`Service`]s deadline settings are not equal the the user given requirements.
+    IncompatibleDeadline,
     /// The event id that is emitted for a newly created [`Notifier`](crate::port::notifier::Notifier)
     /// does not fit the required event id.
     IncompatibleNotifierCreatedEvent,
@@ -71,13 +76,13 @@ pub enum EventOpenError {
     IsMarkedForDestruction,
 }
 
-impl std::fmt::Display for EventOpenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for EventOpenError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "EventOpenError::{:?}", self)
     }
 }
 
-impl std::error::Error for EventOpenError {}
+impl core::error::Error for EventOpenError {}
 
 impl From<ServiceState> for EventOpenError {
     fn from(value: ServiceState) -> Self {
@@ -110,13 +115,13 @@ pub enum EventCreateError {
     InsufficientPermissions,
 }
 
-impl std::fmt::Display for EventCreateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for EventCreateError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "EventCreateError::{:?}", self)
     }
 }
 
-impl std::error::Error for EventCreateError {}
+impl core::error::Error for EventCreateError {}
 
 impl From<ServiceState> for EventCreateError {
     fn from(value: ServiceState) -> Self {
@@ -137,6 +142,9 @@ pub enum EventOpenOrCreateError {
     EventOpenError(EventOpenError),
     /// Failures that can occur when an event [`Service`] is created.
     EventCreateError(EventCreateError),
+    /// Can occur when another process creates and removes the same [`Service`] repeatedly with a
+    /// high frequency.
+    SystemInFlux,
 }
 
 impl From<EventOpenError> for EventOpenOrCreateError {
@@ -151,13 +159,13 @@ impl From<EventCreateError> for EventOpenOrCreateError {
     }
 }
 
-impl std::fmt::Display for EventOpenOrCreateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for EventOpenOrCreateError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "EventOpenOrCreateError::{:?}", self)
     }
 }
 
-impl std::error::Error for EventOpenOrCreateError {}
+impl core::error::Error for EventOpenOrCreateError {}
 
 impl From<ServiceState> for EventOpenOrCreateError {
     fn from(value: ServiceState) -> Self {
@@ -177,6 +185,7 @@ pub struct Builder<ServiceType: service::Service> {
     verify_max_listeners: bool,
     verify_max_nodes: bool,
     verify_event_id_max_value: bool,
+    verify_deadline: bool,
     verify_notifier_created_event: bool,
     verify_notifier_dropped_event: bool,
     verify_notifier_dead_event: bool,
@@ -190,6 +199,7 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
             verify_max_listeners: false,
             verify_max_nodes: false,
             verify_event_id_max_value: false,
+            verify_deadline: false,
             verify_notifier_dead_event: false,
             verify_notifier_created_event: false,
             verify_notifier_dropped_event: false,
@@ -209,6 +219,25 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
                 fatal_panic!(from self, "This should never happen! Accessing wrong messaging pattern in Event builder!");
             }
         }
+    }
+
+    /// Enables the deadline property of the service. There must be a notification emitted by any
+    /// [`Notifier`](crate::port::notifier::Notifier) after at least the provided `deadline`.
+    pub fn deadline(mut self, deadline: Duration) -> Self {
+        self.config_details().deadline = Some(Deadline {
+            value: deadline,
+            creation_time: Time::default(),
+        });
+        self.verify_deadline = true;
+        self
+    }
+
+    /// Disables the deadline property of the service. [`Notifier`](crate::port::notifier::Notifier)
+    /// can signal notifications at any rate.
+    pub fn disable_deadline(mut self) -> Self {
+        self.config_details().deadline = None;
+        self.verify_deadline = true;
+        self
     }
 
     /// If the [`Service`] is created it defines how many [`Node`](crate::node::Node)s shall
@@ -307,17 +336,26 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
     /// does not exist the required attributes will be defined in the [`Service`].
     pub fn open_or_create_with_attributes(
         mut self,
-        required_attributes: &AttributeVerifier,
+        verifier: &AttributeVerifier,
     ) -> Result<event::PortFactory<ServiceType>, EventOpenOrCreateError> {
         let msg = "Unable to open or create event service";
 
+        let mut retry_count = 0;
         loop {
+            if RETRY_LIMIT < retry_count {
+                fail!(from self,
+                      with EventOpenOrCreateError::SystemInFlux,
+                      "{} since an instance is creating and removing the same service repeatedly.",
+                      msg);
+            }
+            retry_count += 1;
+
             match self.base.is_service_available(msg)? {
-                Some(_) => return Ok(self.open_with_attributes(required_attributes)?),
+                Some(_) => return Ok(self.open_with_attributes(verifier)?),
                 None => {
-                    match self.create_impl(&AttributeSpecifier(
-                        required_attributes.attributes().clone(),
-                    )) {
+                    match self
+                        .create_impl(&AttributeSpecifier(verifier.required_attributes().clone()))
+                    {
                         Ok(factory) => return Ok(factory),
                         Err(EventCreateError::AlreadyExists)
                         | Err(EventCreateError::IsBeingCreatedByAnotherInstance) => {
@@ -339,9 +377,8 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
     /// requirements are not satisfied the open process will fail.
     pub fn open_with_attributes(
         mut self,
-        required_attributes: &AttributeVerifier,
+        verifier: &AttributeVerifier,
     ) -> Result<event::PortFactory<ServiceType>, EventOpenError> {
-        const OPEN_RETRY_LIMIT: usize = 5;
         let msg = "Unable to open event service";
 
         let mut service_open_retry_count = 0;
@@ -353,7 +390,7 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
                 }
                 Some((static_config, static_storage)) => {
                     let event_static_config =
-                        self.verify_service_attributes(&static_config, required_attributes)?;
+                        self.verify_service_configuration(&static_config, verifier)?;
 
                     let service_tag = self
                         .base
@@ -369,6 +406,12 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
                             fail!(from self, with EventOpenError::ExceedsMaxNumberOfNodes,
                                 "{} since it would exceed the maximum number of supported nodes.", msg);
                         }
+                        Err(OpenDynamicStorageFailure::DynamicStorageOpenError(
+                            DynamicStorageOpenError::DoesNotExist,
+                        )) => {
+                            fail!(from self, with EventOpenError::ServiceInCorruptedState,
+                                "{} since the dynamic segment of the service is missing.", msg);
+                        }
                         Err(e) => {
                             if self.base.is_service_available(msg)?.is_none() {
                                 fail!(from self, with EventOpenError::DoesNotExist,
@@ -377,7 +420,7 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
 
                             service_open_retry_count += 1;
 
-                            if OPEN_RETRY_LIMIT < service_open_retry_count {
+                            if RETRY_LIMIT < service_open_retry_count {
                                 fail!(from self, with EventOpenError::ServiceInCorruptedState,
                                 "{} since the dynamic service information could not be opened ({:?}). This could indicate a corrupted system or a misconfigured system where services are created/removed with a high frequency.",
                                 msg, e);
@@ -433,6 +476,14 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
                 let service_tag = self
                     .base
                     .create_node_service_tag(msg, EventCreateError::InternalFailure)?;
+
+                if let Some(ref mut deadline) = self.base.service_config.event_mut().deadline {
+                    let now = fail!(from self, when Time::now(),
+                                with EventCreateError::InternalFailure,
+                                "{} since the current system time could not be acquired.", msg);
+
+                    deadline.creation_time = now;
+                }
 
                 let static_config = match self.base.create_static_config_storage() {
                     Ok(c) => c,
@@ -531,7 +582,7 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
         }
     }
 
-    fn verify_service_attributes(
+    fn verify_service_configuration(
         &self,
         existing_settings: &static_config::StaticConfig,
         required_attributes: &AttributeVerifier,
@@ -607,6 +658,15 @@ impl<ServiceType: service::Service> Builder<ServiceType> {
             fail!(from self, with EventOpenError::IncompatibleNotifierDeadEvent,
                 "{} since the notifier_dead_event id is {:?} but the value {:?} is required.",
                 msg, existing_settings.notifier_dead_event, required_settings.notifier_dead_event);
+        }
+
+        if self.verify_deadline
+            && existing_settings.deadline.map(|v| v.value)
+                != required_settings.deadline.map(|v| v.value)
+        {
+            fail!(from self, with EventOpenError::IncompatibleDeadline,
+                "{} since the deadline is {:?} but a deadline of {:?} is required.",
+                msg, existing_settings.deadline, required_settings.deadline);
         }
 
         Ok(*existing_settings)

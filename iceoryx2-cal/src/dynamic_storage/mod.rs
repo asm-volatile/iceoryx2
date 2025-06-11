@@ -32,7 +32,7 @@
 //! use iceoryx2_bb_container::semantic_string::SemanticString;
 //! use iceoryx2_cal::dynamic_storage::*;
 //! use iceoryx2_cal::named_concept::*;
-//! use std::sync::atomic::{AtomicU64, Ordering};
+//! use core::sync::atomic::{AtomicU64, Ordering};
 //!
 //! // the following two functions can be implemented in different processes
 //! fn process_one<Storage: DynamicStorage<AtomicU64>>() {
@@ -54,7 +54,7 @@
 //! }
 //! ```
 
-use std::{fmt::Debug, time::Duration};
+use core::{fmt::Debug, time::Duration};
 
 use iceoryx2_bb_elementary::enum_gen;
 use iceoryx2_bb_memory::bump_allocator::BumpAllocator;
@@ -68,7 +68,7 @@ tiny_fn! {
 }
 
 impl<T> Debug for Initializer<'_, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "")
     }
 }
@@ -106,7 +106,12 @@ enum_gen! {
 pub trait DynamicStorageBuilder<'builder, T: Send + Sync, D: DynamicStorage<T>>:
     Debug + Sized + NamedConceptBuilder<D>
 {
-    /// Defines if a newly created [`DynamicStorage`] owns the underlying resources
+    /// Defines if `T::Drop` shall be called when the [`DynamicStorage`] is removed. The default
+    /// is [`true`].
+    fn call_drop_on_destruction(self, value: bool) -> Self;
+
+    /// Defines if a newly created [`DynamicStorage`] owns the underlying resources. The default
+    /// is [`true`].
     fn has_ownership(self, value: bool) -> Self;
 
     /// Sets the size of the supplementary data. Only relevant when it is newly created otherwise

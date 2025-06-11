@@ -11,11 +11,14 @@ rust-version = { workspace = true }
 version = { workspace = true }
 
 [dependencies]
+iceoryx2-bb-derive-macros = { workspace = true }
 iceoryx2-bb-container = { workspace = true }
 iceoryx2-bb-log = { workspace = true }
 iceoryx2-pal-configuration = { workspace = true }
+iceoryx2-pal-posix = { workspace = true }
 iceoryx2-bb-elementary = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
 iceoryx2-bb-testing = { workspace = true }
+iceoryx2-pal-testing = { workspace = true }

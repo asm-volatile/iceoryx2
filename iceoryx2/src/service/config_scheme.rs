@@ -28,7 +28,7 @@ pub(crate) fn static_config_storage_config<Service: crate::service::Service>(
 ) -> <Service::StaticStorage as NamedConceptMgmt>::Configuration {
     let origin = "static_config_storage_config";
     let msg = "Unable to generate static config storage directory";
-    let mut path_hint = *global_config.global.root_path();
+    let mut path_hint = global_config.global.root_path().clone();
     fatal_panic!(from origin, when path_hint.add_path_entry(&global_config.global.service.directory),
             "{} since the combination of root directory and service directory entry result in an invalid directory \"{}{}\".",
             msg, path_hint, global_config.global.service.directory);
@@ -62,7 +62,7 @@ pub(crate) fn data_segment_config<Service: crate::service::Service>(
 ) -> <Service::SharedMemory as NamedConceptMgmt>::Configuration {
     <<Service::SharedMemory as NamedConceptMgmt>::Configuration>::default()
         .prefix(&global_config.global.prefix)
-        .suffix(&global_config.global.service.publisher_data_segment_suffix)
+        .suffix(&global_config.global.service.data_segment_suffix)
         .path_hint(global_config.global.root_path())
 }
 
@@ -71,7 +71,7 @@ pub(crate) fn resizable_data_segment_config<Service: crate::service::Service>(
 ) -> <Service::ResizableSharedMemory as NamedConceptMgmt>::Configuration {
     <<Service::ResizableSharedMemory as NamedConceptMgmt>::Configuration>::default()
         .prefix(&global_config.global.prefix)
-        .suffix(&global_config.global.service.publisher_data_segment_suffix)
+        .suffix(&global_config.global.service.data_segment_suffix)
         .path_hint(global_config.global.root_path())
 }
 

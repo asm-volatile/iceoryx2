@@ -17,12 +17,12 @@ use windows_sys::Win32::{
     System::Threading::{WaitOnAddress, WakeByAddressSingle, INFINITE},
 };
 
-use crate::posix::{c_string_length, ntohs, types::*};
+use crate::posix::{c_string_length, types::*};
+use core::sync::atomic::Ordering;
 use core::{cell::UnsafeCell, panic};
 use iceoryx2_pal_concurrency_sync::iox_atomic::{IoxAtomicBool, IoxAtomicU32, IoxAtomicUsize};
 use iceoryx2_pal_concurrency_sync::mutex::Mutex;
 use iceoryx2_pal_concurrency_sync::WaitAction;
-use std::sync::atomic::Ordering;
 
 use super::win32_udp_port_to_uds_name::PortToUds;
 
@@ -79,7 +79,7 @@ impl UdsDatagramSocketHandle {
     }
 
     pub fn port(&self) -> u16 {
-        unsafe { ntohs(self.address.as_ref().unwrap().sin_port) }
+        u16::from_be(self.address.as_ref().unwrap().sin_port)
     }
 
     pub fn is_set(&self) -> bool {
@@ -88,10 +88,20 @@ impl UdsDatagramSocketHandle {
 }
 
 #[doc(hidden)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 pub struct SocketHandle {
     pub fd: usize,
+    pub recv_timeout: Option<timeval>,
+    pub send_timeout: Option<timeval>,
 }
+
+impl PartialEq for SocketHandle {
+    fn eq(&self, other: &Self) -> bool {
+        self.fd == other.fd
+    }
+}
+
+impl Eq for SocketHandle {}
 
 #[doc(hidden)]
 pub struct HandleTranslator {
@@ -333,7 +343,7 @@ impl HandleTranslator {
     }
 
     pub(crate) fn set_uds_name(&self, fd: int, address: sockaddr_in, uds_address: *const sockaddr) {
-        let port = unsafe { ntohs(address.sin_port) };
+        let port = u16::from_be(address.sin_port);
 
         let uds_address = uds_address as *const sockaddr_un;
         let name = unsafe {

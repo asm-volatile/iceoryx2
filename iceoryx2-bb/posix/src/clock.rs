@@ -15,19 +15,21 @@
 //! * [`Time`] - acquires the current system time and measures the elapsed time
 //! * [`ClockType`] - describes certain types of clocks
 //! * [`nanosleep()`] & [`nanosleep_with_clock()`] - wait a defined amount of time on a custom
-//!                           clock
+//!   clock
 //! * [`AsTimeval`] - trait for easy [`posix::timeval`] conversion, required for low level posix
-//!                     calls
+//!   calls
 //! * [`AsTimespec`] - trait for easy [`posix::timespec`] conversion, required for low level posix
-//!                     calls
+//!   calls
 
 use crate::system_configuration::Feature;
 use crate::{config::DEFAULT_CLOCK_MODE, handle_errno};
+use core::time::Duration;
+use iceoryx2_bb_derive_macros::ZeroCopySend;
 use iceoryx2_bb_elementary::enum_gen;
 use iceoryx2_bb_log::fail;
 use iceoryx2_pal_posix::posix::errno::Errno;
 use iceoryx2_pal_posix::*;
-use std::time::Duration;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum TimeError {
@@ -63,15 +65,15 @@ impl From<TimeError> for NanosleepError {
 }
 
 /// Represents different low level clocks.
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
-#[repr(i32)]
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq, ZeroCopySend, Serialize, Deserialize)]
+#[repr(C)]
 pub enum ClockType {
     /// represents a steady clock which does not change when the system time
     /// is adjusted
-    Monotonic = posix::CLOCK_MONOTONIC as _,
+    Monotonic,
     /// Clock which represents the current system time. Can change when the  system time is
     /// adjusted.
-    Realtime = posix::CLOCK_REALTIME as _,
+    Realtime,
 }
 
 impl Default for ClockType {
@@ -96,6 +98,13 @@ impl ClockType {
             &[ClockType::Monotonic, ClockType::Realtime]
         } else {
             &[ClockType::Realtime]
+        }
+    }
+
+    fn as_i32(&self) -> i32 {
+        match self {
+            ClockType::Monotonic => posix::CLOCK_MONOTONIC as _,
+            ClockType::Realtime => posix::CLOCK_REALTIME as _,
         }
     }
 }
@@ -179,7 +188,10 @@ impl TimeBuilder {
 }
 
 /// Represents time under a specified [`ClockType`]
-#[derive(Default, Clone, Copy, Eq, PartialEq, Hash, Debug)]
+#[repr(C)]
+#[derive(
+    Default, Clone, Copy, Eq, PartialEq, Hash, Debug, ZeroCopySend, Serialize, Deserialize,
+)]
 pub struct Time {
     pub(crate) clock_type: ClockType,
     pub(crate) seconds: u64,
@@ -202,7 +214,7 @@ impl Time {
         };
 
         handle_errno!(TimeError, from "Time::now",
-            errno_source unsafe { posix::clock_gettime(clock_type as _, &mut current_time).into() },
+            errno_source unsafe { posix::clock_gettime(clock_type.as_i32() as _, &mut current_time).into() },
             success Errno::ESUCCES => Time { clock_type,
                                              seconds: current_time.tv_sec as u64,
                                              nanoseconds: current_time.tv_nsec as u32},
@@ -221,7 +233,7 @@ impl Time {
     /// # Examples
     /// ```
     /// use iceoryx2_bb_posix::clock::*;
-    /// use std::time::Duration;
+    /// use core::time::Duration;
     ///
     /// let now: Time = Time::now().unwrap();
     /// // do something
@@ -269,7 +281,7 @@ impl AsTimespec for Time {
 /// # Examples
 /// ```
 /// use iceoryx2_bb_posix::clock::*;
-/// use std::time::Duration;
+/// use core::time::Duration;
 ///
 /// // sleep for 100 milliseconds
 /// nanosleep(Duration::from_millis(100)).unwrap();
@@ -292,7 +304,7 @@ pub fn nanosleep(duration: Duration) -> Result<(), NanosleepError> {
 /// # Examples
 /// ```
 /// use iceoryx2_bb_posix::clock::*;
-/// use std::time::Duration;
+/// use core::time::Duration;
 ///
 /// // sleep for 100 milliseconds
 /// nanosleep_with_clock(Duration::from_millis(100), ClockType::Realtime).unwrap();
@@ -321,7 +333,7 @@ pub fn nanosleep_with_clock(
     handle_errno!(NanosleepError, from "nanosleep_with_clock",
         errno_source unsafe {
             let e = posix::clock_nanosleep(
-                clock_type as _,
+                clock_type.as_i32() as _,
                 posix::CLOCK_TIMER_ABSTIME,
                 &timeout,
                 &mut time_left,

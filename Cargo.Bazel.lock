@@ -1,5 +1,5 @@
 {
-  "checksum": "447043df7c396095966ba37a0c0172c696c643f2396385310bd37bc345318e5e",
+  "checksum": "6ed904197aeae68d8d8dac1c952e482431e3205ac0c5fa6920930614b4d2d5f8",
   "crates": {
     "addr2line 0.24.2": {
       "name": "addr2line",
@@ -99,43 +99,6 @@
         "version": "1.1.3"
       },
       "license": "Unlicense OR MIT"
-    },
-    "aliasable 0.1.3": {
-      "name": "aliasable",
-      "version": "0.1.3",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/aliasable/0.1.3/download",
-          "sha256": "250f629c0161ad8107cf89319e990051fae62832fd343083bea452d93e2205fd"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "aliasable",
-            "crate_root": "src/lib.rs",
-            "srcs": [
-              "**/*.rs"
-            ]
-          }
-        }
-      ],
-      "library_target_name": "aliasable",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "crate_features": {
-          "common": [
-            "alloc",
-            "default"
-          ],
-          "selects": {}
-        },
-        "edition": "2018",
-        "version": "0.1.3"
-      },
-      "license": "MIT"
     },
     "anstream 0.6.15": {
       "name": "anstream",
@@ -491,7 +454,7 @@
                 "target": "addr2line"
               },
               {
-                "id": "libc 0.2.159",
+                "id": "libc 0.2.169",
                 "target": "libc"
               },
               {
@@ -554,9 +517,9 @@
       },
       "license": "MIT OR Apache-2.0"
     },
-    "benchmark-event 0.5.0": {
+    "benchmark-event 0.6.0": {
       "name": "benchmark-event",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [],
       "library_target_name": null,
@@ -574,13 +537,13 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "benchmark-publish-subscribe 0.5.0": {
+    "benchmark-publish-subscribe 0.6.0": {
       "name": "benchmark-publish-subscribe",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [],
       "library_target_name": null,
@@ -598,13 +561,13 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "benchmark-queue 0.5.0": {
+    "benchmark-queue 0.6.0": {
       "name": "benchmark-queue",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [],
       "library_target_name": null,
@@ -622,7 +585,31 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
+      },
+      "license": "MIT OR Apache-2.0"
+    },
+    "benchmark-request-response 0.6.0": {
+      "name": "benchmark-request-response",
+      "version": "0.6.0",
+      "repository": null,
+      "targets": [],
+      "library_target_name": null,
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "clap 4.5.19",
+              "target": "clap"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
@@ -658,7 +645,7 @@
               "target": "backtrace"
             },
             {
-              "id": "console 0.15.8",
+              "id": "console 0.15.10",
               "target": "console"
             }
           ],
@@ -1371,7 +1358,7 @@
               "target": "glob"
             },
             {
-              "id": "libc 0.2.159",
+              "id": "libc 0.2.169",
               "target": "libc"
             },
             {
@@ -1687,13 +1674,88 @@
       },
       "license": "MPL-2.0"
     },
-    "console 0.15.8": {
+    "console 0.14.1": {
       "name": "console",
-      "version": "0.15.8",
+      "version": "0.14.1",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/console/0.15.8/download",
-          "sha256": "0e1f83fc076bd6dd27517eacdf25fef6c4dfe5f1d7448bafaaf3a26f13b5e4eb"
+          "url": "https://static.crates.io/crates/console/0.14.1/download",
+          "sha256": "3993e6445baa160675931ec041a5e03ca84b9c6e32a056150d3aa2bdda0a1f45"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "console",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "console",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "crate_features": {
+          "common": [
+            "ansi-parsing",
+            "default",
+            "regex",
+            "unicode-width"
+          ],
+          "selects": {}
+        },
+        "deps": {
+          "common": [
+            {
+              "id": "lazy_static 1.5.0",
+              "target": "lazy_static"
+            },
+            {
+              "id": "libc 0.2.169",
+              "target": "libc"
+            },
+            {
+              "id": "regex 1.11.0",
+              "target": "regex"
+            },
+            {
+              "id": "terminal_size 0.1.17",
+              "target": "terminal_size"
+            },
+            {
+              "id": "unicode-width 0.1.14",
+              "target": "unicode_width"
+            }
+          ],
+          "selects": {
+            "cfg(windows)": [
+              {
+                "id": "encode_unicode 0.3.6",
+                "target": "encode_unicode"
+              },
+              {
+                "id": "winapi 0.3.9",
+                "target": "winapi"
+              }
+            ]
+          }
+        },
+        "edition": "2018",
+        "version": "0.14.1"
+      },
+      "license": "MIT"
+    },
+    "console 0.15.10": {
+      "name": "console",
+      "version": "0.15.10",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/console/0.15.10/download",
+          "sha256": "ea3c6ecd8059b57859df5c69830340ed3c41d30e3da0c1cbed90a96ac853041b"
         }
       },
       "targets": [
@@ -1715,31 +1777,179 @@
         "deps": {
           "common": [
             {
-              "id": "lazy_static 1.5.0",
-              "target": "lazy_static"
+              "id": "libc 0.2.169",
+              "target": "libc"
             },
             {
-              "id": "libc 0.2.159",
-              "target": "libc"
+              "id": "once_cell 1.20.2",
+              "target": "once_cell"
             }
           ],
           "selects": {
             "cfg(windows)": [
               {
-                "id": "encode_unicode 0.3.6",
+                "id": "encode_unicode 1.0.0",
                 "target": "encode_unicode"
               },
               {
-                "id": "windows-sys 0.52.0",
+                "id": "windows-sys 0.59.0",
                 "target": "windows_sys"
               }
             ]
           }
         },
         "edition": "2018",
-        "version": "0.15.8"
+        "version": "0.15.10"
       },
       "license": "MIT"
+    },
+    "dialoguer 0.8.0": {
+      "name": "dialoguer",
+      "version": "0.8.0",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/dialoguer/0.8.0/download",
+          "sha256": "c9dd058f8b65922819fabb4a41e7d1964e56344042c26efbccd465202c23fa0c"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "dialoguer",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "dialoguer",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "console 0.14.1",
+              "target": "console"
+            },
+            {
+              "id": "lazy_static 1.5.0",
+              "target": "lazy_static"
+            },
+            {
+              "id": "tempfile 3.13.0",
+              "target": "tempfile"
+            },
+            {
+              "id": "zeroize 1.8.1",
+              "target": "zeroize"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2018",
+        "version": "0.8.0"
+      },
+      "license": "MIT"
+    },
+    "dirs 5.0.1": {
+      "name": "dirs",
+      "version": "5.0.1",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/dirs/5.0.1/download",
+          "sha256": "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "dirs",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "dirs",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "dirs-sys 0.4.1",
+              "target": "dirs_sys"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2015",
+        "version": "5.0.1"
+      },
+      "license": "MIT OR Apache-2.0"
+    },
+    "dirs-sys 0.4.1": {
+      "name": "dirs-sys",
+      "version": "0.4.1",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/dirs-sys/0.4.1/download",
+          "sha256": "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "dirs_sys",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "dirs_sys",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "option-ext 0.2.0",
+              "target": "option_ext"
+            }
+          ],
+          "selects": {
+            "cfg(target_os = \"redox\")": [
+              {
+                "id": "redox_users 0.4.6",
+                "target": "redox_users"
+              }
+            ],
+            "cfg(unix)": [
+              {
+                "id": "libc 0.2.169",
+                "target": "libc"
+              }
+            ],
+            "cfg(windows)": [
+              {
+                "id": "windows-sys 0.48.0",
+                "target": "windows_sys"
+              }
+            ]
+          }
+        },
+        "edition": "2015",
+        "version": "0.4.1"
+      },
+      "license": "MIT OR Apache-2.0"
     },
     "either 1.13.0": {
       "name": "either",
@@ -1814,6 +2024,43 @@
         "version": "0.3.6"
       },
       "license": "MIT/Apache-2.0"
+    },
+    "encode_unicode 1.0.0": {
+      "name": "encode_unicode",
+      "version": "1.0.0",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/encode_unicode/1.0.0/download",
+          "sha256": "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "encode_unicode",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "encode_unicode",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "crate_features": {
+          "common": [
+            "default",
+            "std"
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "1.0.0"
+      },
+      "license": "Apache-2.0 OR MIT"
     },
     "enum-iterator 2.1.0": {
       "name": "enum-iterator",
@@ -1967,19 +2214,19 @@
           "selects": {
             "cfg(target_os = \"hermit\")": [
               {
-                "id": "libc 0.2.159",
+                "id": "libc 0.2.169",
                 "target": "libc"
               }
             ],
             "cfg(target_os = \"wasi\")": [
               {
-                "id": "libc 0.2.159",
+                "id": "libc 0.2.169",
                 "target": "libc"
               }
             ],
             "cfg(unix)": [
               {
-                "id": "libc 0.2.159",
+                "id": "libc 0.2.169",
                 "target": "libc"
               }
             ],
@@ -1996,9 +2243,9 @@
       },
       "license": "MIT OR Apache-2.0"
     },
-    "example 0.5.0": {
+    "example 0.6.0": {
       "name": "example",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2016,7 +2263,7 @@
         "compile_data_glob": [
           "**"
         ],
-        "deps": {
+        "deps_dev": {
           "common": [
             {
               "id": "clap 4.5.19",
@@ -2026,7 +2273,7 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
@@ -2156,7 +2403,7 @@
             ],
             "cfg(unix)": [
               {
-                "id": "libc 0.2.159",
+                "id": "libc 0.2.169",
                 "target": "libc"
               }
             ]
@@ -2371,13 +2618,13 @@
       },
       "license": "MIT OR Apache-2.0"
     },
-    "human-panic 1.2.3": {
+    "human-panic 2.0.2": {
       "name": "human-panic",
-      "version": "1.2.3",
+      "version": "2.0.2",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/human-panic/1.2.3/download",
-          "sha256": "c4f016c89920bbb30951a8405ecacbb4540db5524313b9445736e7e1855cf370"
+          "url": "https://static.crates.io/crates/human-panic/2.0.2/download",
+          "sha256": "80b84a66a325082740043a6c28bbea400c129eac0d3a27673a1de971e44bf1f7"
         }
       },
       "targets": [
@@ -2446,13 +2693,13 @@
           ],
           "selects": {}
         },
-        "version": "1.2.3"
+        "version": "2.0.2"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2 0.5.0": {
+    "iceoryx2 0.6.0": {
       "name": "iceoryx2",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2473,20 +2720,8 @@
         "deps": {
           "common": [
             {
-              "id": "cdr 0.2.4",
-              "target": "cdr"
-            },
-            {
-              "id": "lazy_static 1.5.0",
-              "target": "lazy_static"
-            },
-            {
               "id": "serde 1.0.210",
               "target": "serde"
-            },
-            {
-              "id": "sha1_smol 1.0.1",
-              "target": "sha1_smol"
             },
             {
               "id": "tiny-fn 0.1.7",
@@ -2509,13 +2744,13 @@
           ],
           "selects": {}
         },
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-container 0.5.0": {
+    "iceoryx2-bb-container 0.6.0": {
       "name": "iceoryx2-bb-container",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2561,13 +2796,13 @@
           ],
           "selects": {}
         },
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-derive-macros 0.5.0": {
+    "iceoryx2-bb-derive-macros 0.6.0": {
       "name": "iceoryx2-bb-derive-macros",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2603,13 +2838,13 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-elementary 0.5.0": {
+    "iceoryx2-bb-elementary 0.6.0": {
       "name": "iceoryx2-bb-elementary",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2637,13 +2872,38 @@
           ],
           "selects": {}
         },
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-lock-free 0.5.0": {
+    "iceoryx2-bb-elementary-traits 0.6.0": {
+      "name": "iceoryx2-bb-elementary-traits",
+      "version": "0.6.0",
+      "repository": null,
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "iceoryx2_bb_elementary_traits",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "iceoryx2_bb_elementary_traits",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "edition": "2021",
+        "version": "0.6.0"
+      },
+      "license": "MIT OR Apache-2.0"
+    },
+    "iceoryx2-bb-lock-free 0.6.0": {
       "name": "iceoryx2-bb-lock-free",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2661,15 +2921,6 @@
         "compile_data_glob": [
           "**"
         ],
-        "deps": {
-          "common": [
-            {
-              "id": "tiny-fn 0.1.7",
-              "target": "tiny_fn"
-            }
-          ],
-          "selects": {}
-        },
         "edition": "2021",
         "proc_macro_deps_dev": {
           "common": [
@@ -2680,13 +2931,13 @@
           ],
           "selects": {}
         },
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-log 0.5.0": {
+    "iceoryx2-bb-log 0.6.0": {
       "name": "iceoryx2-bb-log",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2714,13 +2965,13 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-memory 0.5.0": {
+    "iceoryx2-bb-memory 0.6.0": {
       "name": "iceoryx2-bb-memory",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2738,27 +2989,14 @@
         "compile_data_glob": [
           "**"
         ],
-        "deps": {
-          "common": [
-            {
-              "id": "lazy_static 1.5.0",
-              "target": "lazy_static"
-            },
-            {
-              "id": "tiny-fn 0.1.7",
-              "target": "tiny_fn"
-            }
-          ],
-          "selects": {}
-        },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-posix 0.5.0": {
+    "iceoryx2-bb-posix 0.6.0": {
       "name": "iceoryx2-bb-posix",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2778,10 +3016,6 @@
         ],
         "deps": {
           "common": [
-            {
-              "id": "bitflags 2.6.0",
-              "target": "bitflags"
-            },
             {
               "id": "enum-iterator 2.1.0",
               "target": "enum_iterator"
@@ -2811,13 +3045,13 @@
           ],
           "selects": {}
         },
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-system-types 0.5.0": {
+    "iceoryx2-bb-system-types 0.6.0": {
       "name": "iceoryx2-bb-system-types",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2845,13 +3079,13 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-testing 0.5.0": {
+    "iceoryx2-bb-testing 0.6.0": {
       "name": "iceoryx2-bb-testing",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2870,13 +3104,13 @@
           "**"
         ],
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-threadsafe 0.5.0": {
+    "iceoryx2-bb-threadsafe 0.6.0": {
       "name": "iceoryx2-bb-threadsafe",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2895,13 +3129,13 @@
           "**"
         ],
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-bb-trait-tests 0.5.0": {
+    "iceoryx2-bb-trait-tests 0.6.0": {
       "name": "iceoryx2-bb-trait-tests",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2929,13 +3163,13 @@
           ],
           "selects": {}
         },
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-cal 0.5.0": {
+    "iceoryx2-cal 0.6.0": {
       "name": "iceoryx2-cal",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -2960,16 +3194,8 @@
               "target": "cdr"
             },
             {
-              "id": "lazy_static 1.5.0",
-              "target": "lazy_static"
-            },
-            {
               "id": "once_cell 1.20.2",
               "target": "once_cell"
-            },
-            {
-              "id": "ouroboros 0.18.4",
-              "target": "ouroboros"
             },
             {
               "id": "serde 1.0.210",
@@ -2990,6 +3216,15 @@
           ],
           "selects": {}
         },
+        "deps_dev": {
+          "common": [
+            {
+              "id": "lazy_static 1.5.0",
+              "target": "lazy_static"
+            }
+          ],
+          "selects": {}
+        },
         "edition": "2021",
         "proc_macro_deps_dev": {
           "common": [
@@ -3000,13 +3235,13 @@
           ],
           "selects": {}
         },
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-cli 0.5.0": {
+    "iceoryx2-cli 0.6.0": {
       "name": "iceoryx2-cli",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -3047,7 +3282,19 @@
               "target": "colored"
             },
             {
-              "id": "human-panic 1.2.3",
+              "id": "dialoguer 0.8.0",
+              "target": "dialoguer"
+            },
+            {
+              "id": "dirs 5.0.1",
+              "target": "dirs"
+            },
+            {
+              "id": "enum-iterator 2.1.0",
+              "target": "enum_iterator"
+            },
+            {
+              "id": "human-panic 2.0.2",
               "target": "human_panic"
             },
             {
@@ -3065,6 +3312,10 @@
             {
               "id": "serde_yaml 0.9.34+deprecated",
               "target": "serde_yaml"
+            },
+            {
+              "id": "toml 0.8.19",
+              "target": "toml"
             }
           ],
           "selects": {}
@@ -3079,13 +3330,13 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-ffi 0.5.0": {
+    "iceoryx2-ffi 0.6.0": {
       "name": "iceoryx2-ffi",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -3115,7 +3366,7 @@
         "deps": {
           "common": [
             {
-              "id": "iceoryx2-ffi 0.5.0",
+              "id": "iceoryx2-ffi 0.6.0",
               "target": "build_script_build"
             }
           ],
@@ -3131,7 +3382,7 @@
           ],
           "selects": {}
         },
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "build_script_attrs": {
         "data_glob": [
@@ -3149,9 +3400,9 @@
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-ffi-macros 0.5.0": {
+    "iceoryx2-ffi-macros 0.6.0": {
       "name": "iceoryx2-ffi-macros",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -3187,13 +3438,13 @@
           "selects": {}
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-pal-concurrency-sync 0.5.0": {
+    "iceoryx2-pal-concurrency-sync 0.6.0": {
       "name": "iceoryx2-pal-concurrency-sync",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -3221,13 +3472,13 @@
           ],
           "selects": {}
         },
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-pal-configuration 0.5.0": {
+    "iceoryx2-pal-configuration 0.6.0": {
       "name": "iceoryx2-pal-configuration",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -3246,13 +3497,13 @@
           "**"
         ],
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
-    "iceoryx2-pal-posix 0.5.0": {
+    "iceoryx2-pal-posix 0.6.0": {
       "name": "iceoryx2-pal-posix",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "repository": null,
       "targets": [
         {
@@ -3282,12 +3533,16 @@
         "deps": {
           "common": [
             {
-              "id": "iceoryx2-pal-posix 0.5.0",
+              "id": "iceoryx2-pal-posix 0.6.0",
               "target": "build_script_build"
             },
             {
               "id": "lazy_static 1.5.0",
               "target": "lazy_static"
+            },
+            {
+              "id": "libc 0.2.169",
+              "target": "libc"
             }
           ],
           "selects": {
@@ -3300,7 +3555,7 @@
           }
         },
         "edition": "2021",
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "build_script_attrs": {
         "data_glob": [
@@ -3319,6 +3574,78 @@
           ],
           "selects": {}
         }
+      },
+      "license": "MIT OR Apache-2.0"
+    },
+    "iceoryx2-pal-testing 0.6.0": {
+      "name": "iceoryx2-pal-testing",
+      "version": "0.6.0",
+      "repository": null,
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "iceoryx2_pal_testing",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "iceoryx2_pal_testing",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "edition": "2021",
+        "version": "0.6.0"
+      },
+      "license": "MIT OR Apache-2.0"
+    },
+    "iceoryx2-services-discovery 0.6.0": {
+      "name": "iceoryx2-services-discovery",
+      "version": "0.6.0",
+      "repository": null,
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "iceoryx2_services_discovery",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "iceoryx2_services_discovery",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "once_cell 1.20.2",
+              "target": "once_cell"
+            },
+            {
+              "id": "serde 1.0.210",
+              "target": "serde"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "proc_macro_deps_dev": {
+          "common": [
+            {
+              "id": "generic-tests 0.1.2",
+              "target": "generic_tests"
+            }
+          ],
+          "selects": {}
+        },
+        "version": "0.6.0"
       },
       "license": "MIT OR Apache-2.0"
     },
@@ -3433,14 +3760,6 @@
         "compile_data_glob": [
           "**"
         ],
-        "crate_features": {
-          "common": [
-            "default",
-            "use_alloc",
-            "use_std"
-          ],
-          "selects": {}
-        },
         "deps": {
           "common": [
             {
@@ -3545,13 +3864,13 @@
       },
       "license": "MIT/Apache-2.0"
     },
-    "libc 0.2.159": {
+    "libc 0.2.169": {
       "name": "libc",
-      "version": "0.2.159",
+      "version": "0.2.169",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/libc/0.2.159/download",
-          "sha256": "561d97a539a36e26a9a5fad1ea11a3039a67714694aaa379433e580854bc3dc5"
+          "url": "https://static.crates.io/crates/libc/0.2.169/download",
+          "sha256": "b5aba8db14291edd000dfcc4d620c7ebfb122c613afb886ca8803fa4e128a20a"
         }
       },
       "targets": [
@@ -3641,14 +3960,14 @@
         "deps": {
           "common": [
             {
-              "id": "libc 0.2.159",
+              "id": "libc 0.2.169",
               "target": "build_script_build"
             }
           ],
           "selects": {}
         },
-        "edition": "2015",
-        "version": "0.2.159"
+        "edition": "2021",
+        "version": "0.2.169"
       },
       "build_script_attrs": {
         "data_glob": [
@@ -3703,6 +4022,49 @@
         "version": "0.8.5"
       },
       "license": "ISC"
+    },
+    "libredox 0.1.3": {
+      "name": "libredox",
+      "version": "0.1.3",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/libredox/0.1.3/download",
+          "sha256": "c0ff37bd590ca25063e35af745c343cb7a0271906fb7b37e4813e8f79f00268d"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "libredox",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "libredox",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "bitflags 2.6.0",
+              "target": "bitflags"
+            },
+            {
+              "id": "libc 0.2.169",
+              "target": "libc"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "0.1.3"
+      },
+      "license": "MIT"
     },
     "linux-raw-sys 0.4.14": {
       "name": "linux-raw-sys",
@@ -4027,6 +4389,36 @@
       },
       "license": "MIT OR Apache-2.0"
     },
+    "option-ext 0.2.0": {
+      "name": "option-ext",
+      "version": "0.2.0",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/option-ext/0.2.0/download",
+          "sha256": "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "option_ext",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "option_ext",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "edition": "2015",
+        "version": "0.2.0"
+      },
+      "license": "MPL-2.0"
+    },
     "os_info 3.8.2": {
       "name": "os_info",
       "version": "3.8.2",
@@ -4083,130 +4475,6 @@
         "version": "3.8.2"
       },
       "license": "MIT"
-    },
-    "ouroboros 0.18.4": {
-      "name": "ouroboros",
-      "version": "0.18.4",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/ouroboros/0.18.4/download",
-          "sha256": "944fa20996a25aded6b4795c6d63f10014a7a83f8be9828a11860b08c5fc4a67"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "ouroboros",
-            "crate_root": "src/lib.rs",
-            "srcs": [
-              "**/*.rs"
-            ]
-          }
-        }
-      ],
-      "library_target_name": "ouroboros",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "crate_features": {
-          "common": [
-            "default",
-            "std"
-          ],
-          "selects": {}
-        },
-        "deps": {
-          "common": [
-            {
-              "id": "aliasable 0.1.3",
-              "target": "aliasable"
-            },
-            {
-              "id": "static_assertions 1.1.0",
-              "target": "static_assertions"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2018",
-        "proc_macro_deps": {
-          "common": [
-            {
-              "id": "ouroboros_macro 0.18.4",
-              "target": "ouroboros_macro"
-            }
-          ],
-          "selects": {}
-        },
-        "version": "0.18.4"
-      },
-      "license": "MIT OR Apache-2.0"
-    },
-    "ouroboros_macro 0.18.4": {
-      "name": "ouroboros_macro",
-      "version": "0.18.4",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/ouroboros_macro/0.18.4/download",
-          "sha256": "39b0deead1528fd0e5947a8546a9642a9777c25f6e1e26f34c97b204bbb465bd"
-        }
-      },
-      "targets": [
-        {
-          "ProcMacro": {
-            "crate_name": "ouroboros_macro",
-            "crate_root": "src/lib.rs",
-            "srcs": [
-              "**/*.rs"
-            ]
-          }
-        }
-      ],
-      "library_target_name": "ouroboros_macro",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "crate_features": {
-          "common": [
-            "std"
-          ],
-          "selects": {}
-        },
-        "deps": {
-          "common": [
-            {
-              "id": "heck 0.4.1",
-              "target": "heck"
-            },
-            {
-              "id": "itertools 0.12.1",
-              "target": "itertools"
-            },
-            {
-              "id": "proc-macro2 1.0.86",
-              "target": "proc_macro2"
-            },
-            {
-              "id": "proc-macro2-diagnostics 0.10.1",
-              "target": "proc_macro2_diagnostics"
-            },
-            {
-              "id": "quote 1.0.37",
-              "target": "quote"
-            },
-            {
-              "id": "syn 2.0.79",
-              "target": "syn"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2018",
-        "version": "0.18.4"
-      },
-      "license": "MIT OR Apache-2.0"
     },
     "prettyplease 0.2.22": {
       "name": "prettyplease",
@@ -4340,92 +4608,6 @@
       },
       "license": "MIT OR Apache-2.0"
     },
-    "proc-macro2-diagnostics 0.10.1": {
-      "name": "proc-macro2-diagnostics",
-      "version": "0.10.1",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/proc-macro2-diagnostics/0.10.1/download",
-          "sha256": "af066a9c399a26e020ada66a034357a868728e72cd426f3adcd35f80d88d88c8"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "proc_macro2_diagnostics",
-            "crate_root": "src/lib.rs",
-            "srcs": [
-              "**/*.rs"
-            ]
-          }
-        },
-        {
-          "BuildScript": {
-            "crate_name": "build_script_build",
-            "crate_root": "build.rs",
-            "srcs": [
-              "**/*.rs"
-            ]
-          }
-        }
-      ],
-      "library_target_name": "proc_macro2_diagnostics",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "crate_features": {
-          "common": [
-            "colors",
-            "default",
-            "yansi"
-          ],
-          "selects": {}
-        },
-        "deps": {
-          "common": [
-            {
-              "id": "proc-macro2 1.0.86",
-              "target": "proc_macro2"
-            },
-            {
-              "id": "proc-macro2-diagnostics 0.10.1",
-              "target": "build_script_build"
-            },
-            {
-              "id": "quote 1.0.37",
-              "target": "quote"
-            },
-            {
-              "id": "syn 2.0.79",
-              "target": "syn"
-            },
-            {
-              "id": "yansi 1.0.1",
-              "target": "yansi"
-            }
-          ],
-          "selects": {}
-        },
-        "edition": "2018",
-        "version": "0.10.1"
-      },
-      "build_script_attrs": {
-        "data_glob": [
-          "**"
-        ],
-        "deps": {
-          "common": [
-            {
-              "id": "version_check 0.9.5",
-              "target": "version_check"
-            }
-          ],
-          "selects": {}
-        }
-      },
-      "license": "MIT/Apache-2.0"
-    },
     "quote 1.0.37": {
       "name": "quote",
       "version": "1.0.37",
@@ -4471,6 +4653,53 @@
         "version": "1.0.37"
       },
       "license": "MIT OR Apache-2.0"
+    },
+    "redox_users 0.4.6": {
+      "name": "redox_users",
+      "version": "0.4.6",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/redox_users/0.4.6/download",
+          "sha256": "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "redox_users",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "redox_users",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "getrandom 0.2.15",
+              "target": "getrandom"
+            },
+            {
+              "id": "libredox 0.1.3",
+              "target": "libredox"
+            },
+            {
+              "id": "thiserror 1.0.64",
+              "target": "thiserror"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "0.4.6"
+      },
+      "license": "MIT"
     },
     "regex 1.11.0": {
       "name": "regex",
@@ -4821,7 +5050,7 @@
                 "alias": "libc_errno"
               },
               {
-                "id": "libc 0.2.159",
+                "id": "libc 0.2.169",
                 "target": "libc"
               }
             ],
@@ -5350,36 +5579,6 @@
       },
       "license": "MIT OR Apache-2.0"
     },
-    "static_assertions 1.1.0": {
-      "name": "static_assertions",
-      "version": "1.1.0",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/static_assertions/1.1.0/download",
-          "sha256": "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "static_assertions",
-            "crate_root": "src/lib.rs",
-            "srcs": [
-              "**/*.rs"
-            ]
-          }
-        }
-      ],
-      "library_target_name": "static_assertions",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "edition": "2015",
-        "version": "1.1.0"
-      },
-      "license": "MIT OR Apache-2.0"
-    },
     "strsim 0.11.1": {
       "name": "strsim",
       "version": "0.11.1",
@@ -5613,6 +5812,53 @@
       },
       "license": "MIT OR Apache-2.0"
     },
+    "terminal_size 0.1.17": {
+      "name": "terminal_size",
+      "version": "0.1.17",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/terminal_size/0.1.17/download",
+          "sha256": "633c1a546cee861a1a6d0dc69ebeca693bf4296661ba7852b9d21d159e0506df"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "terminal_size",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "terminal_size",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [],
+          "selects": {
+            "cfg(not(windows))": [
+              {
+                "id": "libc 0.2.169",
+                "target": "libc"
+              }
+            ],
+            "cfg(windows)": [
+              {
+                "id": "winapi 0.3.9",
+                "target": "winapi"
+              }
+            ]
+          }
+        },
+        "edition": "2018",
+        "version": "0.1.17"
+      },
+      "license": "MIT OR Apache-2.0"
+    },
     "termsize 0.1.9": {
       "name": "termsize",
       "version": "0.1.9",
@@ -5643,7 +5889,7 @@
           "selects": {
             "cfg(unix)": [
               {
-                "id": "libc 0.2.159",
+                "id": "libc 0.2.169",
                 "target": "libc"
               }
             ],
@@ -5996,6 +6242,43 @@
       },
       "license": "(MIT OR Apache-2.0) AND Unicode-DFS-2016"
     },
+    "unicode-width 0.1.14": {
+      "name": "unicode-width",
+      "version": "0.1.14",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/unicode-width/0.1.14/download",
+          "sha256": "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "unicode_width",
+            "crate_root": "src/lib.rs",
+            "srcs": [
+              "**/*.rs"
+            ]
+          }
+        }
+      ],
+      "library_target_name": "unicode_width",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "crate_features": {
+          "common": [
+            "cjk",
+            "default"
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "0.1.14"
+      },
+      "license": "MIT OR Apache-2.0"
+    },
     "unsafe-libyaml 0.2.11": {
       "name": "unsafe-libyaml",
       "version": "0.2.11",
@@ -6107,36 +6390,6 @@
         "version": "1.10.0"
       },
       "license": "Apache-2.0 OR MIT"
-    },
-    "version_check 0.9.5": {
-      "name": "version_check",
-      "version": "0.9.5",
-      "repository": {
-        "Http": {
-          "url": "https://static.crates.io/crates/version_check/0.9.5/download",
-          "sha256": "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-        }
-      },
-      "targets": [
-        {
-          "Library": {
-            "crate_name": "version_check",
-            "crate_root": "src/lib.rs",
-            "srcs": [
-              "**/*.rs"
-            ]
-          }
-        }
-      ],
-      "library_target_name": "version_check",
-      "common_attrs": {
-        "compile_data_glob": [
-          "**"
-        ],
-        "edition": "2015",
-        "version": "0.9.5"
-      },
-      "license": "MIT/Apache-2.0"
     },
     "wasi 0.11.0+wasi-snapshot-preview1": {
       "name": "wasi",
@@ -6260,9 +6513,14 @@
         ],
         "crate_features": {
           "common": [
+            "consoleapi",
             "fileapi",
             "handleapi",
-            "wincon"
+            "processenv",
+            "winbase",
+            "wincon",
+            "winnt",
+            "winuser"
           ],
           "selects": {}
         },
@@ -6433,6 +6691,7 @@
           "common": [
             "Win32",
             "Win32_Foundation",
+            "Win32_Globalization",
             "Win32_Networking",
             "Win32_Networking_WinSock",
             "Win32_Security",
@@ -6440,6 +6699,7 @@
             "Win32_Storage",
             "Win32_Storage_FileSystem",
             "Win32_System",
+            "Win32_System_Com",
             "Win32_System_Console",
             "Win32_System_Diagnostics",
             "Win32_System_Diagnostics_Debug",
@@ -6451,6 +6711,8 @@
             "Win32_System_SystemServices",
             "Win32_System_Threading",
             "Win32_System_WindowsProgramming",
+            "Win32_UI",
+            "Win32_UI_Shell",
             "default"
           ],
           "selects": {}
@@ -6498,8 +6760,6 @@
           "common": [
             "Win32",
             "Win32_Foundation",
-            "Win32_Storage",
-            "Win32_Storage_FileSystem",
             "Win32_System",
             "Win32_System_Console",
             "Win32_System_LibraryLoader",
@@ -6508,8 +6768,6 @@
             "Win32_System_SystemServices",
             "Win32_System_Threading",
             "Win32_UI",
-            "Win32_UI_Input",
-            "Win32_UI_Input_KeyboardAndMouse",
             "Win32_UI_WindowsAndMessaging",
             "default"
           ],
@@ -6560,6 +6818,11 @@
             "Win32_Foundation",
             "Win32_Storage",
             "Win32_Storage_FileSystem",
+            "Win32_System",
+            "Win32_System_Console",
+            "Win32_UI",
+            "Win32_UI_Input",
+            "Win32_UI_Input_KeyboardAndMouse",
             "default"
           ],
           "selects": {}
@@ -7571,19 +7834,19 @@
       },
       "license": "MIT"
     },
-    "yansi 1.0.1": {
-      "name": "yansi",
-      "version": "1.0.1",
+    "zeroize 1.8.1": {
+      "name": "zeroize",
+      "version": "1.8.1",
       "repository": {
         "Http": {
-          "url": "https://static.crates.io/crates/yansi/1.0.1/download",
-          "sha256": "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
+          "url": "https://static.crates.io/crates/zeroize/1.8.1/download",
+          "sha256": "ced3678a2879b30306d323f4542626697a464a97c0a07c9aebf7ebca65cd4dde"
         }
       },
       "targets": [
         {
           "Library": {
-            "crate_name": "yansi",
+            "crate_name": "zeroize",
             "crate_root": "src/lib.rs",
             "srcs": [
               "**/*.rs"
@@ -7591,7 +7854,7 @@
           }
         }
       ],
-      "library_target_name": "yansi",
+      "library_target_name": "zeroize",
       "common_attrs": {
         "compile_data_glob": [
           "**"
@@ -7599,42 +7862,45 @@
         "crate_features": {
           "common": [
             "alloc",
-            "default",
-            "std"
+            "default"
           ],
           "selects": {}
         },
         "edition": "2021",
-        "version": "1.0.1"
+        "version": "1.8.1"
       },
-      "license": "MIT OR Apache-2.0"
+      "license": "Apache-2.0 OR MIT"
     }
   },
   "binary_crates": [],
   "workspace_members": {
-    "benchmark-event 0.5.0": "benchmarks/event",
-    "benchmark-publish-subscribe 0.5.0": "benchmarks/publish-subscribe",
-    "benchmark-queue 0.5.0": "benchmarks/queue",
-    "example 0.5.0": "examples",
-    "iceoryx2 0.5.0": "iceoryx2",
-    "iceoryx2-bb-container 0.5.0": "iceoryx2-bb/container",
-    "iceoryx2-bb-derive-macros 0.5.0": "iceoryx2-bb/derive-macros",
-    "iceoryx2-bb-elementary 0.5.0": "iceoryx2-bb/elementary",
-    "iceoryx2-bb-lock-free 0.5.0": "iceoryx2-bb/lock-free",
-    "iceoryx2-bb-log 0.5.0": "iceoryx2-bb/log",
-    "iceoryx2-bb-memory 0.5.0": "iceoryx2-bb/memory",
-    "iceoryx2-bb-posix 0.5.0": "iceoryx2-bb/posix",
-    "iceoryx2-bb-system-types 0.5.0": "iceoryx2-bb/system-types",
-    "iceoryx2-bb-testing 0.5.0": "iceoryx2-bb/testing",
-    "iceoryx2-bb-threadsafe 0.5.0": "iceoryx2-bb/threadsafe",
-    "iceoryx2-bb-trait-tests 0.5.0": "iceoryx2-bb/trait-tests",
-    "iceoryx2-cal 0.5.0": "iceoryx2-cal",
-    "iceoryx2-cli 0.5.0": "iceoryx2-cli",
-    "iceoryx2-ffi 0.5.0": "iceoryx2-ffi/ffi",
-    "iceoryx2-ffi-macros 0.5.0": "iceoryx2-ffi/ffi-macros",
-    "iceoryx2-pal-concurrency-sync 0.5.0": "iceoryx2-pal/concurrency-sync",
-    "iceoryx2-pal-configuration 0.5.0": "iceoryx2-pal/configuration",
-    "iceoryx2-pal-posix 0.5.0": "iceoryx2-pal/posix"
+    "benchmark-event 0.6.0": "benchmarks/event",
+    "benchmark-publish-subscribe 0.6.0": "benchmarks/publish-subscribe",
+    "benchmark-queue 0.6.0": "benchmarks/queue",
+    "benchmark-request-response 0.6.0": "benchmarks/request-response",
+    "example 0.6.0": "examples",
+    "iceoryx2 0.6.0": "iceoryx2",
+    "iceoryx2-bb-container 0.6.0": "iceoryx2-bb/container",
+    "iceoryx2-bb-derive-macros 0.6.0": "iceoryx2-bb/derive-macros",
+    "iceoryx2-bb-elementary 0.6.0": "iceoryx2-bb/elementary",
+    "iceoryx2-bb-elementary-traits 0.6.0": "iceoryx2-bb/elementary-traits",
+    "iceoryx2-bb-lock-free 0.6.0": "iceoryx2-bb/lock-free",
+    "iceoryx2-bb-log 0.6.0": "iceoryx2-bb/log",
+    "iceoryx2-bb-memory 0.6.0": "iceoryx2-bb/memory",
+    "iceoryx2-bb-posix 0.6.0": "iceoryx2-bb/posix",
+    "iceoryx2-bb-system-types 0.6.0": "iceoryx2-bb/system-types",
+    "iceoryx2-bb-testing 0.6.0": "iceoryx2-bb/testing",
+    "iceoryx2-bb-threadsafe 0.6.0": "iceoryx2-bb/threadsafe",
+    "iceoryx2-bb-trait-tests 0.6.0": "iceoryx2-bb/trait-tests",
+    "iceoryx2-cal 0.6.0": "iceoryx2-cal",
+    "iceoryx2-cli 0.6.0": "iceoryx2-cli",
+    "iceoryx2-ffi 0.6.0": "iceoryx2-ffi/ffi",
+    "iceoryx2-ffi-macros 0.6.0": "iceoryx2-ffi/ffi-macros",
+    "iceoryx2-pal-concurrency-sync 0.6.0": "iceoryx2-pal/concurrency-sync",
+    "iceoryx2-pal-configuration 0.6.0": "iceoryx2-pal/configuration",
+    "iceoryx2-pal-posix 0.6.0": "iceoryx2-pal/posix",
+    "iceoryx2-pal-testing 0.6.0": "iceoryx2-pal/testing",
+    "iceoryx2-services-discovery 0.6.0": "iceoryx2-services/discovery"
   },
   "conditions": {
     "aarch64-pc-windows-gnullvm": [],
@@ -7779,7 +8045,38 @@
       "x86_64-unknown-linux-gnu",
       "x86_64-unknown-none"
     ],
+    "cfg(not(windows))": [
+      "aarch64-apple-darwin",
+      "aarch64-apple-ios",
+      "aarch64-apple-ios-sim",
+      "aarch64-fuchsia",
+      "aarch64-linux-android",
+      "aarch64-unknown-linux-gnu",
+      "arm-unknown-linux-gnueabi",
+      "armv7-linux-androideabi",
+      "armv7-unknown-linux-gnueabi",
+      "i686-apple-darwin",
+      "i686-linux-android",
+      "i686-unknown-freebsd",
+      "i686-unknown-linux-gnu",
+      "powerpc-unknown-linux-gnu",
+      "riscv32imc-unknown-none-elf",
+      "riscv64gc-unknown-none-elf",
+      "s390x-unknown-linux-gnu",
+      "thumbv7em-none-eabi",
+      "thumbv8m.main-none-eabi",
+      "wasm32-unknown-unknown",
+      "wasm32-wasi",
+      "x86_64-apple-darwin",
+      "x86_64-apple-ios",
+      "x86_64-fuchsia",
+      "x86_64-linux-android",
+      "x86_64-unknown-freebsd",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-unknown-none"
+    ],
     "cfg(target_os = \"hermit\")": [],
+    "cfg(target_os = \"redox\")": [],
     "cfg(target_os = \"wasi\")": [
       "wasm32-wasi"
     ],

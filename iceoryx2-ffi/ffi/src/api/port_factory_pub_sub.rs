@@ -12,21 +12,35 @@
 
 #![allow(non_camel_case_types)]
 
-use crate::api::{
-    iox2_port_factory_publisher_builder_h, iox2_port_factory_publisher_builder_t,
-    iox2_port_factory_subscriber_builder_h, iox2_port_factory_subscriber_builder_t,
-    iox2_service_type_e, iox2_static_config_publish_subscribe_t, AssertNonNullHandle, HandleToType,
-    PayloadFfi, PortFactoryPublisherBuilderUnion, PortFactorySubscriberBuilderUnion, UserHeaderFfi,
+use crate::{
+    api::{
+        iox2_port_factory_publisher_builder_h, iox2_port_factory_publisher_builder_t,
+        iox2_port_factory_subscriber_builder_h, iox2_port_factory_subscriber_builder_t,
+        iox2_service_type_e, iox2_static_config_publish_subscribe_t, AssertNonNullHandle,
+        HandleToType, IntoCInt, PayloadFfi, PortFactoryPublisherBuilderUnion,
+        PortFactorySubscriberBuilderUnion, UserHeaderFfi,
+    },
+    iox2_node_list_impl, IOX2_OK,
 };
 
-use iceoryx2::prelude::*;
-use iceoryx2::service::port_factory::publish_subscribe::PortFactory;
+use iceoryx2::service::{
+    dynamic_config::publish_subscribe::PublisherDetails,
+    port_factory::publish_subscribe::PortFactory,
+};
+use iceoryx2::{prelude::*, service::dynamic_config::publish_subscribe::SubscriberDetails};
 use iceoryx2_bb_elementary::static_assert::*;
 use iceoryx2_ffi_macros::iceoryx2_ffi;
 
-use core::mem::ManuallyDrop;
+use core::{
+    ffi::{c_char, c_int},
+    mem::ManuallyDrop,
+};
 
-use super::iox2_attribute_set_h_ref;
+use super::{
+    iox2_attribute_set_ptr, iox2_callback_context, iox2_callback_progression_e,
+    iox2_node_list_callback, iox2_publisher_details_ptr, iox2_service_name_ptr,
+    iox2_subscriber_details_ptr,
+};
 
 // BEGIN types definition
 
@@ -115,6 +129,30 @@ impl HandleToType for iox2_port_factory_pub_sub_h_ref {
         unsafe { *self as *mut _ as _ }
     }
 }
+
+/// The callback for [`iox2_port_factory_pub_sub_dynamic_config_list_subscribers()`]
+///
+/// # Arguments
+///
+/// * [`iox2_callback_context`] -> provided by the user and can be `NULL`
+/// * [`iox2_subscriber_details_ptr`] -> a pointer to the details struct of the port
+///
+/// Returns a [`iox2_callback_progression_e`](crate::iox2_callback_progression_e)
+pub type iox2_list_subscribers_callback = extern "C" fn(
+    iox2_callback_context,
+    iox2_subscriber_details_ptr,
+) -> iox2_callback_progression_e;
+
+/// The callback for [`iox2_port_factory_pub_sub_dynamic_config_list_publishers()`]
+///
+/// # Arguments
+///
+/// * [`iox2_callback_context`] -> provided by the user and can be `NULL`
+/// * [`iox2_publisher_details_ptr`] -> a pointer to the details struct of the port
+///
+/// Returns a [`iox2_callback_progression_e`](crate::iox2_callback_progression_e)
+pub type iox2_list_publishers_callback =
+    extern "C" fn(iox2_callback_context, iox2_publisher_details_ptr) -> iox2_callback_progression_e;
 
 // END type definition
 
@@ -235,23 +273,19 @@ pub unsafe extern "C" fn iox2_port_factory_pub_sub_subscriber_builder(
 #[no_mangle]
 pub unsafe extern "C" fn iox2_port_factory_pub_sub_attributes(
     port_factory_handle: iox2_port_factory_pub_sub_h_ref,
-) -> iox2_attribute_set_h_ref {
+) -> iox2_attribute_set_ptr {
     use iceoryx2::prelude::PortFactory;
 
     port_factory_handle.assert_non_null();
 
     let port_factory = &mut *port_factory_handle.as_type();
     match port_factory.service_type {
-        iox2_service_type_e::IPC => {
-            (port_factory.value.as_ref().ipc.attributes() as *const AttributeSet).cast()
-        }
-        iox2_service_type_e::LOCAL => {
-            (port_factory.value.as_ref().local.attributes() as *const AttributeSet).cast()
-        }
+        iox2_service_type_e::IPC => port_factory.value.as_ref().ipc.attributes(),
+        iox2_service_type_e::LOCAL => port_factory.value.as_ref().local.attributes(),
     }
 }
 
-/// Set the values int the provided [`iox2_static_config_publish_subscribe_t`] pointer.
+/// Set the values in the provided [`iox2_static_config_publish_subscribe_t`] pointer.
 ///
 /// # Safety
 ///
@@ -275,6 +309,243 @@ pub unsafe extern "C" fn iox2_port_factory_pub_sub_static_config(
     };
 
     *static_config = config.into();
+}
+
+/// Returns how many publisher ports are currently connected.
+///
+/// # Safety
+///
+/// * The `handle` must be valid and obtained by [`iox2_service_builder_pub_sub_open`](crate::iox2_service_builder_pub_sub_open) or
+///   [`iox2_service_builder_pub_sub_open_or_create`](crate::iox2_service_builder_pub_sub_open_or_create)!
+#[no_mangle]
+pub unsafe extern "C" fn iox2_port_factory_pub_sub_dynamic_config_number_of_publishers(
+    handle: iox2_port_factory_pub_sub_h_ref,
+) -> usize {
+    handle.assert_non_null();
+
+    let port_factory = &mut *handle.as_type();
+
+    use iceoryx2::prelude::PortFactory;
+    match port_factory.service_type {
+        iox2_service_type_e::IPC => port_factory
+            .value
+            .as_ref()
+            .ipc
+            .dynamic_config()
+            .number_of_publishers(),
+        iox2_service_type_e::LOCAL => port_factory
+            .value
+            .as_ref()
+            .local
+            .dynamic_config()
+            .number_of_publishers(),
+    }
+}
+
+/// Calls the callback repeatedly with an [`iox2_node_state_e`](crate::api::iox2_node_state_e),
+/// [`iox2_node_id_ptr`](crate::api::iox2_node_id_ptr),
+/// [´iox2_node_name_ptr´](crate::api::iox2_node_name_ptr) and
+/// [`iox2_config_ptr`](crate::api::iox2_config_ptr) for all
+/// [`Node`](iceoryx2::node::Node)s that
+/// have opened the service.
+///
+/// Returns IOX2_OK on success, an
+/// [`iox2_node_list_failure_e`](crate::api::iox2_node_list_failure_e) otherwise.
+///
+/// # Safety
+///
+/// * The `handle` must be valid and obtained by [`iox2_service_builder_pub_sub_open`](crate::iox2_service_builder_pub_sub_open) or
+///   [`iox2_service_builder_pub_sub_open_or_create`](crate::iox2_service_builder_pub_sub_open_or_create)!
+/// * `callback` - A valid callback with [`iox2_node_list_callback`} signature
+/// * `callback_ctx` - An optional callback context [`iox2_callback_context`} to e.g. store information across callback iterations
+#[no_mangle]
+pub unsafe extern "C" fn iox2_port_factory_pub_sub_nodes(
+    handle: iox2_port_factory_pub_sub_h_ref,
+    callback: iox2_node_list_callback,
+    callback_ctx: iox2_callback_context,
+) -> c_int {
+    use iceoryx2::prelude::PortFactory;
+
+    handle.assert_non_null();
+
+    let port_factory = &mut *handle.as_type();
+
+    let list_result = match port_factory.service_type {
+        iox2_service_type_e::IPC => port_factory
+            .value
+            .as_ref()
+            .ipc
+            .nodes(|node_state| iox2_node_list_impl(&node_state, callback, callback_ctx)),
+        iox2_service_type_e::LOCAL => port_factory
+            .value
+            .as_ref()
+            .local
+            .nodes(|node_state| iox2_node_list_impl(&node_state, callback, callback_ctx)),
+    };
+
+    match list_result {
+        Ok(_) => IOX2_OK,
+        Err(e) => e.into_c_int(),
+    }
+}
+
+/// Returns the [`iox2_service_name_ptr`], an immutable pointer to the service name.
+///
+/// # Safety
+///
+/// * The `handle` must be valid and obtained by [`iox2_service_builder_pub_sub_open`](crate::iox2_service_builder_pub_sub_open) or
+///   [`iox2_service_builder_pub_sub_open_or_create`](crate::iox2_service_builder_pub_sub_open_or_create)!
+#[no_mangle]
+pub unsafe extern "C" fn iox2_port_factory_pub_sub_service_name(
+    handle: iox2_port_factory_pub_sub_h_ref,
+) -> iox2_service_name_ptr {
+    use iceoryx2::prelude::PortFactory;
+
+    handle.assert_non_null();
+
+    let port_factory = &mut *handle.as_type();
+
+    match port_factory.service_type {
+        iox2_service_type_e::IPC => port_factory.value.as_ref().ipc.name(),
+        iox2_service_type_e::LOCAL => port_factory.value.as_ref().local.name(),
+    }
+}
+
+/// Stores the service id in the provided buffer
+///
+/// # Safety
+///
+/// * The `handle` must be valid and obtained by [`iox2_service_builder_pub_sub_open`](crate::iox2_service_builder_pub_sub_open) or
+///   [`iox2_service_builder_pub_sub_open_or_create`](crate::iox2_service_builder_pub_sub_open_or_create)!
+/// * `buffer` must be non-zero and point to a valid memory location
+/// * `buffer_len` must define the actual size of the memory location `buffer` is pointing to
+#[no_mangle]
+pub unsafe extern "C" fn iox2_port_factory_pub_sub_service_id(
+    handle: iox2_port_factory_pub_sub_h_ref,
+    buffer: *mut c_char,
+    buffer_len: usize,
+) {
+    use iceoryx2::prelude::PortFactory;
+
+    debug_assert!(!buffer.is_null());
+    handle.assert_non_null();
+
+    let port_factory = &mut *handle.as_type();
+    let service_id = match port_factory.service_type {
+        iox2_service_type_e::IPC => port_factory.value.as_ref().ipc.service_id(),
+        iox2_service_type_e::LOCAL => port_factory.value.as_ref().local.service_id(),
+    };
+
+    let len = buffer_len.min(service_id.as_str().len());
+    core::ptr::copy_nonoverlapping(service_id.as_str().as_ptr(), buffer.cast(), len);
+    buffer.add(len).write(0);
+}
+
+/// Returns how many subscriber ports are currently connected.
+///
+/// # Safety
+///
+/// * The `handle` must be valid and obtained by [`iox2_service_builder_pub_sub_open`](crate::iox2_service_builder_pub_sub_open) or
+///   [`iox2_service_builder_pub_sub_open_or_create`](crate::iox2_service_builder_pub_sub_open_or_create)!
+#[no_mangle]
+pub unsafe extern "C" fn iox2_port_factory_pub_sub_dynamic_config_number_of_subscribers(
+    handle: iox2_port_factory_pub_sub_h_ref,
+) -> usize {
+    handle.assert_non_null();
+
+    let port_factory = &mut *handle.as_type();
+
+    use iceoryx2::prelude::PortFactory;
+    match port_factory.service_type {
+        iox2_service_type_e::IPC => port_factory
+            .value
+            .as_ref()
+            .ipc
+            .dynamic_config()
+            .number_of_subscribers(),
+        iox2_service_type_e::LOCAL => port_factory
+            .value
+            .as_ref()
+            .local
+            .dynamic_config()
+            .number_of_subscribers(),
+    }
+}
+
+/// Calls the callback repeatedly for every connected [`iox2_subscriber_h`](crate::iox2_subscriber_h)
+/// and provides all communcation details with a [`iox2_subscriber_details_ptr`].
+///
+/// # Safety
+///
+/// * [`iox2_subscriber_details_ptr`] - Provides a view to the subscriber details. Data must not be
+///   accessed outside of the callback.
+/// * `callback` - A valid callback with [`iox2_list_subscribers_callback`] signature
+/// * `callback_ctx` - An optional callback context [`iox2_callback_context`] to e.g. store
+///   information across callback iterations. Must be either `NULL` or point to a valid memory
+///   location
+#[no_mangle]
+pub unsafe extern "C" fn iox2_port_factory_pub_sub_dynamic_config_list_subscribers(
+    handle: iox2_port_factory_pub_sub_h_ref,
+    callback: iox2_list_subscribers_callback,
+    callback_ctx: iox2_callback_context,
+) {
+    handle.assert_non_null();
+    use iceoryx2::prelude::PortFactory;
+
+    let port_factory = &mut *handle.as_type();
+    let callback_tr = |subscriber: &SubscriberDetails| callback(callback_ctx, subscriber).into();
+    match port_factory.service_type {
+        iox2_service_type_e::IPC => port_factory
+            .value
+            .as_ref()
+            .ipc
+            .dynamic_config()
+            .list_subscribers(callback_tr),
+        iox2_service_type_e::LOCAL => port_factory
+            .value
+            .as_ref()
+            .local
+            .dynamic_config()
+            .list_subscribers(callback_tr),
+    };
+}
+
+/// Calls the callback repeatedly for every connected [`iox2_publisher_h`](crate::iox2_publisher_h)
+/// and provides all communcation details with a [`iox2_publisher_details_ptr`].
+///
+/// # Safety
+///
+/// * [`iox2_publisher_details_ptr`] - Provides a view to the publisher details. Data must not be
+///   accessed outside of the callback.
+/// * `callback` - A valid callback with [`iox2_list_publishers_callback`] signature
+/// * `callback_ctx` - An optional callback context [`iox2_callback_context`] to e.g. store
+///   information across callback iterations. Must be either `NULL` or point to a valid memory
+///   location
+#[no_mangle]
+pub unsafe extern "C" fn iox2_port_factory_pub_sub_dynamic_config_list_publishers(
+    handle: iox2_port_factory_pub_sub_h_ref,
+    callback: iox2_list_publishers_callback,
+    callback_ctx: iox2_callback_context,
+) {
+    handle.assert_non_null();
+    use iceoryx2::prelude::PortFactory;
+
+    let port_factory = &mut *handle.as_type();
+    let callback_tr = |publisher: &PublisherDetails| callback(callback_ctx, publisher).into();
+    match port_factory.service_type {
+        iox2_service_type_e::IPC => port_factory
+            .value
+            .as_ref()
+            .ipc
+            .dynamic_config()
+            .list_publishers(callback_tr),
+        iox2_service_type_e::LOCAL => port_factory
+            .value
+            .as_ref()
+            .local
+            .dynamic_config()
+            .list_publishers(callback_tr),
+    };
 }
 
 /// This function needs to be called to destroy the port factory!

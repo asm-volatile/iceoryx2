@@ -1,9 +1,13 @@
 # Publish-Subscribe
 
-Before proceeding, all dependencies need to be installed. You can find
-instructions in the [C Examples Readme](../README.md).
-
-## Running The Example
+> [!CAUTION]
+> Every payload you transmit with iceoryx2 must be compatible with shared
+> memory. Specifically, it must:
+>
+> * be self contained, no heap, no pointers to external sources
+> * have a uniform memory representation, ensuring that shared structs have the
+>     same data layout
+> * not use pointers to manage their internal structure
 
 This example illustrates a robust publisher-subscriber communication pattern
 between two separate processes. The publisher sends two messages every second,
@@ -12,12 +16,19 @@ checks for new data every second.
 
 The subscriber is printing the sample on the console whenever new data arrives.
 
+## How to Build
+
+Before proceeding, all dependencies need to be installed. You can find
+instructions in the [C Examples Readme](../README.md).
+
 First you have to build the C examples:
 
 ```sh
 cmake -S . -B target/ffi/build -DBUILD_EXAMPLES=ON
 cmake --build target/ffi/build
 ```
+
+## How to Run
 
 To observe this dynamic communication in action, open two separate terminals and
 execute the following commands:

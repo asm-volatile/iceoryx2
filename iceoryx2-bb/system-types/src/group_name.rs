@@ -29,8 +29,9 @@ pub use iceoryx2_bb_container::semantic_string::SemanticString;
 
 use core::hash::{Hash, Hasher};
 use iceoryx2_bb_container::semantic_string;
+use iceoryx2_bb_derive_macros::ZeroCopySend;
+use iceoryx2_pal_posix::posix::GROUP_NAME_LENGTH;
 
-const GROUP_NAME_LENGTH: usize = 31;
 semantic_string! {
   name: GroupName,
   capacity: GROUP_NAME_LENGTH,
@@ -44,7 +45,7 @@ semantic_string! {
   invalid_characters: |string: &[u8]| {
     for value in string {
         match value {
-            b'a'..=b'z' | b'0'..=b'9' | b'-' => (),
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' => (),
             _ => return true,
         }
     }
@@ -52,6 +53,6 @@ semantic_string! {
     false
   },
   normalize: |this: &GroupName| {
-      *this
+      this.clone()
   }
 }

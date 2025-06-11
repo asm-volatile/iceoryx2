@@ -15,7 +15,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! let pubsub = node.service_builder(&"My/Funk/ServiceName".try_into()?)
 //!     .publish_subscribe::<u64>()
@@ -40,8 +40,9 @@
 //! # }
 //! ```
 
-use std::{fmt::Debug, marker::PhantomData};
+use core::{fmt::Debug, marker::PhantomData};
 
+use iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend;
 use iceoryx2_bb_elementary::CallbackProgression;
 use iceoryx2_cal::dynamic_storage::DynamicStorage;
 
@@ -60,23 +61,36 @@ use super::{publisher::PortFactoryPublisher, subscriber::PortFactorySubscriber};
 /// [`crate::port::publisher::Publisher`]
 /// or [`crate::port::subscriber::Subscriber`] ports.
 #[derive(Debug)]
-pub struct PortFactory<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug> {
+pub struct PortFactory<
+    Service: service::Service,
+    Payload: Debug + ZeroCopySend + ?Sized,
+    UserHeader: Debug + ZeroCopySend,
+> {
     pub(crate) service: Service,
     _payload: PhantomData<Payload>,
     _user_header: PhantomData<UserHeader>,
 }
 
-unsafe impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug> Send
-    for PortFactory<Service, Payload, UserHeader>
+unsafe impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > Send for PortFactory<Service, Payload, UserHeader>
 {
 }
-unsafe impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug> Sync
-    for PortFactory<Service, Payload, UserHeader>
+unsafe impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > Sync for PortFactory<Service, Payload, UserHeader>
 {
 }
 
-impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
-    crate::service::port_factory::PortFactory for PortFactory<Service, Payload, UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > crate::service::port_factory::PortFactory for PortFactory<Service, Payload, UserHeader>
 {
     type Service = Service;
     type StaticConfig = static_config::publish_subscribe::StaticConfig;
@@ -121,8 +135,11 @@ impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
     }
 }
 
-impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
-    PortFactory<Service, Payload, UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > PortFactory<Service, Payload, UserHeader>
 {
     pub(crate) fn new(service: Service) -> Self {
         Self {
@@ -140,7 +157,7 @@ impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
     /// ```
     /// use iceoryx2::prelude::*;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// let pubsub = node.service_builder(&"My/Funk/ServiceName".try_into()?)
     ///     .publish_subscribe::<u64>()
@@ -162,9 +179,8 @@ impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
     ///
     /// ```
     /// use iceoryx2::prelude::*;
-    /// use iceoryx2::service::port_factory::publisher::UnableToDeliverStrategy;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// let pubsub = node.service_builder(&"My/Funk/ServiceName".try_into()?)
     ///     .publish_subscribe::<u64>()

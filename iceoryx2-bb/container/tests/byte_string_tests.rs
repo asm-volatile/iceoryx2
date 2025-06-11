@@ -11,10 +11,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 mod fixed_size_byte_string {
-    use std::{
-        hash::{Hash, Hasher},
-        ops::DerefMut,
-    };
+    use core::ops::DerefMut;
+    use std::hash::{Hash, Hasher};
 
     use iceoryx2_bb_container::byte_string::*;
     use iceoryx2_bb_elementary::placement_default::PlacementDefault;
@@ -228,13 +226,13 @@ mod fixed_size_byte_string {
     #[test]
     fn from_c_str_works() {
         let value = Sut::from(b"");
-        let sut = unsafe { Sut::from_c_str(value.as_ptr() as *mut std::ffi::c_char).unwrap() };
+        let sut = unsafe { Sut::from_c_str(value.as_ptr() as *mut core::ffi::c_char).unwrap() };
 
         assert_that!(sut, len 0);
         assert_that!(sut, eq b"");
 
         let value = Sut::from(b"foo baha");
-        let sut = unsafe { Sut::from_c_str(value.as_ptr() as *mut std::ffi::c_char).unwrap() };
+        let sut = unsafe { Sut::from_c_str(value.as_ptr() as *mut core::ffi::c_char).unwrap() };
 
         assert_that!(sut, len 8);
         assert_that!(sut, eq b"foo baha");
@@ -309,23 +307,23 @@ mod fixed_size_byte_string {
     fn strip_prefix_works() {
         let sut = unsafe { Sut::new_unchecked(b"msla:0123_lerata.fuu") };
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_prefix(b"bkasjdkas120ie19jdkasjdksjd"), eq false);
         assert_that!(sut_clone, eq sut);
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_prefix(b"msla:"), eq true);
         assert_that!(sut_clone, eq b"0123_lerata.fuu");
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_prefix(b"m"), eq true);
         assert_that!(sut_clone, eq b"sla:0123_lerata.fuu");
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_prefix(b"sla"), eq false);
         assert_that!(sut_clone, eq sut);
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_prefix(b"fuu"), eq false);
         assert_that!(sut_clone, eq sut);
     }
@@ -334,23 +332,23 @@ mod fixed_size_byte_string {
     fn strip_suffix_works() {
         let sut = unsafe { Sut::new_unchecked(b"msla:0123_lerata.fuu") };
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_suffix(b"bkaslqwsd0jdkasjdkasjdksjd"), eq false);
         assert_that!(sut_clone, eq sut);
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_suffix(b".fuu"), eq true);
         assert_that!(sut_clone, eq b"msla:0123_lerata");
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_suffix(b"u"), eq true);
         assert_that!(sut_clone, eq b"msla:0123_lerata.fu");
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_suffix(b"fu"), eq false);
         assert_that!(sut_clone, eq sut);
 
-        let mut sut_clone = sut;
+        let mut sut_clone = sut.clone();
         assert_that!(sut_clone.strip_suffix(b"msla"), eq false);
         assert_that!(sut_clone, eq sut);
     }
@@ -358,22 +356,22 @@ mod fixed_size_byte_string {
     #[test]
     fn ordering_works() {
         unsafe {
-            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuubla")), eq std::cmp::Ordering::Equal );
-            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuvbla")), eq std::cmp::Ordering::Less );
-            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuubaa")), eq std::cmp::Ordering::Greater );
-            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuubla123")), eq std::cmp::Ordering::Less );
-            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuu")), eq std::cmp::Ordering::Greater );
+            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuubla")), eq core::cmp::Ordering::Equal );
+            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuvbla")), eq core::cmp::Ordering::Less );
+            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuubaa")), eq core::cmp::Ordering::Greater );
+            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuubla123")), eq core::cmp::Ordering::Less );
+            assert_that!(Sut::new_unchecked(b"fuubla").cmp(&Sut::new_unchecked(b"fuu")), eq core::cmp::Ordering::Greater );
         }
     }
 
     #[test]
     fn partial_ordering_works() {
         unsafe {
-            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuubla")), eq Some(std::cmp::Ordering::Equal ));
-            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuvbla")), eq Some(std::cmp::Ordering::Less ));
-            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuubaa")), eq Some(std::cmp::Ordering::Greater ));
-            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuubla123")), eq Some(std::cmp::Ordering::Less ));
-            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuu")), eq Some(std::cmp::Ordering::Greater ));
+            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuubla")), eq Some(core::cmp::Ordering::Equal ));
+            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuvbla")), eq Some(core::cmp::Ordering::Less ));
+            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuubaa")), eq Some(core::cmp::Ordering::Greater ));
+            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuubla123")), eq Some(core::cmp::Ordering::Less ));
+            assert_that!(SutAlt::new_unchecked(b"darth_fuubla").partial_cmp(&Sut::new_unchecked(b"darth_fuu")), eq Some(core::cmp::Ordering::Greater ));
         }
     }
 

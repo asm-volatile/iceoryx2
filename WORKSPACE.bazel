@@ -41,7 +41,7 @@ rules_rust_dependencies()
 rust_register_toolchains(
     edition = "2021",
     versions = [
-        "1.80.0"
+        "1.81.0"
     ],
 )
 
@@ -88,11 +88,14 @@ maybe(
         "//:benchmarks/event/Cargo.toml",
         "//:benchmarks/publish-subscribe/Cargo.toml",
         "//:benchmarks/queue/Cargo.toml",
+        "//:benchmarks/request-response/Cargo.toml",
         "//:examples/Cargo.toml",
+        "//:iceoryx2-services/discovery/Cargo.toml",
         "//:iceoryx2/Cargo.toml",
         "//:iceoryx2-bb/container/Cargo.toml",
         "//:iceoryx2-bb/derive-macros/Cargo.toml",
         "//:iceoryx2-bb/elementary/Cargo.toml",
+        "//:iceoryx2-bb/elementary-traits/Cargo.toml",
         "//:iceoryx2-bb/lock-free/Cargo.toml",
         "//:iceoryx2-bb/log/Cargo.toml",
         "//:iceoryx2-bb/memory/Cargo.toml",
@@ -108,6 +111,7 @@ maybe(
         "//:iceoryx2-pal/concurrency-sync/Cargo.toml",
         "//:iceoryx2-pal/configuration/Cargo.toml",
         "//:iceoryx2-pal/posix/Cargo.toml",
+        "//:iceoryx2-pal/testing/Cargo.toml",
     ],
 )
 
@@ -134,12 +138,12 @@ bazel_skylib_workspace()
 
 
 # Load iceoryx rules
-ICEORYX_VERSION = "2.95.3"
+ICEORYX_VERSION = "2.95.4"
 
 maybe(
     name = "iceoryx",
     repo_rule = http_archive,
-    sha256 = "14b854906b58a48140a5d074167d5f3a5af2d578574940501a330954af79b9d4",
+    sha256 = "82c4fe7507d1609e1275a04a3fe8278ae20620aa30e1eede63f96a9c23308ab6",
     strip_prefix = "iceoryx-{}".format(ICEORYX_VERSION),
     url = "https://github.com/eclipse-iceoryx/iceoryx/archive/v{}.tar.gz".format(ICEORYX_VERSION),
 )

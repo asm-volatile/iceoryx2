@@ -15,6 +15,7 @@
 
 use crate::communication_channel::*;
 use crate::static_storage::file::NamedConceptConfiguration;
+use core::fmt::Debug;
 use iceoryx2_bb_lock_free::spsc::safely_overflowing_index_queue::*;
 use iceoryx2_bb_log::{fail, fatal_panic};
 use iceoryx2_bb_posix::mutex::*;
@@ -22,8 +23,9 @@ use iceoryx2_bb_system_types::file_path::FilePath;
 use iceoryx2_bb_system_types::path::Path;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::fmt::Debug;
-use std::sync::Arc;
+
+extern crate alloc;
+use alloc::sync::Arc;
 
 #[derive(Debug)]
 pub(crate) struct Management {
@@ -59,7 +61,7 @@ static PROCESS_LOCAL_CHANNELS: Lazy<Mutex<HashMap<FilePath, StorageEntry>>> = La
     result.unwrap()
 });
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Configuration {
     suffix: FileName,
     prefix: FileName,
@@ -78,7 +80,7 @@ impl Default for Configuration {
 
 impl NamedConceptConfiguration for Configuration {
     fn prefix(mut self, value: &FileName) -> Self {
-        self.prefix = *value;
+        self.prefix = value.clone();
         self
     }
 
@@ -87,12 +89,12 @@ impl NamedConceptConfiguration for Configuration {
     }
 
     fn suffix(mut self, value: &FileName) -> Self {
-        self.suffix = *value;
+        self.suffix = value.clone();
         self
     }
 
     fn path_hint(mut self, value: &Path) -> Self {
-        self.path_hint = *value;
+        self.path_hint = value.clone();
         self
     }
 
@@ -116,7 +118,7 @@ pub struct Creator {
 impl NamedConceptBuilder<Channel> for Creator {
     fn new(channel_name: &FileName) -> Self {
         Self {
-            name: *channel_name,
+            name: channel_name.clone(),
             enable_safe_overflow: false,
             buffer_size: DEFAULT_RECEIVER_BUFFER_SIZE,
             config: Configuration::default(),
@@ -124,7 +126,7 @@ impl NamedConceptBuilder<Channel> for Creator {
     }
 
     fn config(mut self, config: &Configuration) -> Self {
-        self.config = *config;
+        self.config = config.clone();
         self
     }
 }
@@ -154,7 +156,7 @@ impl CommunicationChannelCreator<u64, Channel> for Creator {
         }
 
         guard.insert(
-            full_name,
+            full_name.clone(),
             StorageEntry {
                 content: Arc::new(Management::new(self.enable_safe_overflow, self.buffer_size)),
             },
@@ -179,13 +181,13 @@ pub struct Connector {
 impl NamedConceptBuilder<Channel> for Connector {
     fn new(channel_name: &FileName) -> Self {
         Self {
-            name: *channel_name,
+            name: channel_name.clone(),
             config: Configuration::default(),
         }
     }
 
     fn config(mut self, config: &Configuration) -> Self {
-        self.config = *config;
+        self.config = config.clone();
         self
     }
 }
@@ -194,7 +196,7 @@ impl CommunicationChannelConnector<u64, Channel> for Connector {
     fn open_sender(self) -> Result<Duplex, CommunicationChannelOpenError> {
         let msg = "Failed to open sender";
         let origin = format!("{:?}", self);
-        let name = self.name;
+        let name = self.name.clone();
         match self.try_open_sender() {
             Err(CommunicationChannelOpenError::DoesNotExist) => {
                 fail!(from origin, with CommunicationChannelOpenError::DoesNotExist,

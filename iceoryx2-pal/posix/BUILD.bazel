@@ -25,8 +25,6 @@ filegroup(
 cc_library(
     name = "iceoryx2-pal-posix-c-lib",
     srcs = [
-        "src/c/dirent.c",
-        "src/c/sigaction.c",
         "src/c/socket_macros.c",
     ],
     hdrs = glob(["src/c/**"]),
@@ -77,13 +75,7 @@ rust_test_suite(
     srcs = glob(["tests/**/*.rs"]),
     deps = [
         ":iceoryx2-pal-posix",
-        "//iceoryx2-bb/container:iceoryx2-bb-container",
-        "//iceoryx2-bb/elementary:iceoryx2-bb-elementary",
-        "//iceoryx2-bb/lock-free:iceoryx2-bb-lock-free",
-        "//iceoryx2-bb/memory:iceoryx2-bb-memory",
-        "//iceoryx2-bb/system-types:iceoryx2-bb-system-types",
-        "//iceoryx2-bb/testing:iceoryx2-bb-testing",
-        "//iceoryx2-cal:iceoryx2-cal",
+        "//iceoryx2-pal/testing:iceoryx2-pal-testing",
     ],
     proc_macro_deps = [
         "@crate_index//:generic-tests",

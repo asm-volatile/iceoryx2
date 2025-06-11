@@ -29,7 +29,7 @@
 //! println!("removed byte {}", some_string.remove(0));
 //! ```
 
-use std::{
+use core::{
     cmp::Ordering,
     fmt::{Debug, Display},
     hash::Hash,
@@ -37,7 +37,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use iceoryx2_bb_derive_macros::PlacementDefault;
+use iceoryx2_bb_derive_macros::{PlacementDefault, ZeroCopySend};
 use iceoryx2_bb_elementary::placement_default::PlacementDefault;
 use iceoryx2_bb_log::{fail, fatal_panic};
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
@@ -67,21 +67,41 @@ pub enum FixedSizeByteStringModificationError {
     InsertWouldExceedCapacity,
 }
 
-impl std::fmt::Display for FixedSizeByteStringModificationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for FixedSizeByteStringModificationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "FixedSizeByteStringModificationError::{:?}", self)
     }
 }
 
-impl std::error::Error for FixedSizeByteStringModificationError {}
+impl core::error::Error for FixedSizeByteStringModificationError {}
 
 /// Relocatable string with compile time fixed size capacity.
-#[derive(Clone, Copy, PlacementDefault)]
+#[derive(PlacementDefault, ZeroCopySend)]
 #[repr(C)]
 pub struct FixedSizeByteString<const CAPACITY: usize> {
     len: usize,
     data: [MaybeUninit<u8>; CAPACITY],
     terminator: u8,
+}
+
+impl<const CAPACITY: usize> Clone for FixedSizeByteString<CAPACITY> {
+    fn clone(&self) -> Self {
+        let mut new_self = Self {
+            len: self.len,
+            data: [const { MaybeUninit::uninit() }; CAPACITY],
+            terminator: 0,
+        };
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(self.data.as_ptr(), new_self.data.as_mut_ptr(), self.len)
+        };
+
+        if self.len < CAPACITY {
+            new_self.data[self.len].write(0);
+        }
+
+        new_self
+    }
 }
 
 impl<const CAPACITY: usize> Serialize for FixedSizeByteString<CAPACITY> {
@@ -98,7 +118,7 @@ struct FixedSizeByteStringVisitor<const CAPACITY: usize>;
 impl<const CAPACITY: usize> Visitor<'_> for FixedSizeByteStringVisitor<CAPACITY> {
     type Value = FixedSizeByteString<CAPACITY>;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
         formatter.write_str(&format!("a string with a length of at most {}", CAPACITY))
     }
 
@@ -147,7 +167,7 @@ impl<const CAPACITY: usize> Ord for FixedSizeByteString<CAPACITY> {
 }
 
 impl<const CAPACITY: usize> Hash for FixedSizeByteString<CAPACITY> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         state.write(self.as_bytes())
     }
 }
@@ -182,6 +202,18 @@ impl<const CAPACITY: usize> PartialEq<&[u8]> for FixedSizeByteString<CAPACITY> {
     }
 }
 
+impl<const CAPACITY: usize> PartialEq<&str> for FixedSizeByteString<CAPACITY> {
+    fn eq(&self, other: &&str) -> bool {
+        *self.as_bytes() == *other.as_bytes()
+    }
+}
+
+impl<const CAPACITY: usize> PartialEq<FixedSizeByteString<CAPACITY>> for &str {
+    fn eq(&self, other: &FixedSizeByteString<CAPACITY>) -> bool {
+        *self.as_bytes() == *other.as_bytes()
+    }
+}
+
 impl<const CAPACITY: usize, const OTHER_CAPACITY: usize> PartialEq<[u8; OTHER_CAPACITY]>
     for FixedSizeByteString<CAPACITY>
 {
@@ -199,7 +231,7 @@ impl<const CAPACITY: usize, const OTHER_CAPACITY: usize> PartialEq<&[u8; OTHER_C
 }
 
 impl<const CAPACITY: usize> Debug for FixedSizeByteString<CAPACITY> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
             "FixedSizeByteString<{}> {{ len: {}, data: \"{}\" }}",
@@ -211,7 +243,7 @@ impl<const CAPACITY: usize> Debug for FixedSizeByteString<CAPACITY> {
 }
 
 impl<const CAPACITY: usize> Display for FixedSizeByteString<CAPACITY> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", as_escaped_string(self.as_bytes()))
     }
 }
@@ -227,6 +259,23 @@ impl<const CAPACITY: usize, const BYTE_CAPACITY: usize> From<&[u8; BYTE_CAPACITY
         let mut new_self = Self::new();
         new_self.push_bytes(value).unwrap();
         new_self
+    }
+}
+
+impl<const CAPACITY: usize> TryFrom<&str> for FixedSizeByteString<CAPACITY> {
+    type Error = FixedSizeByteStringModificationError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if CAPACITY < value.len() {
+            fail!(from "FixedSizeByteString::from<&str>()",
+                with FixedSizeByteStringModificationError::InsertWouldExceedCapacity,
+                "The provided string \"{}\" does not fit into the FixedSizeByteString with capacity {}",
+                value, CAPACITY);
+        }
+
+        let mut new_self = Self::new();
+        new_self.push_bytes(value.as_bytes()).unwrap();
+        Ok(new_self)
     }
 }
 
@@ -304,7 +353,7 @@ impl<const CAPACITY: usize> FixedSizeByteString<CAPACITY> {
     /// into the [`FixedSizeByteString`] it will be truncated.
     pub fn from_bytes_truncated(bytes: &[u8]) -> Self {
         let mut new_self = Self::new();
-        new_self.len = std::cmp::min(bytes.len(), CAPACITY);
+        new_self.len = core::cmp::min(bytes.len(), CAPACITY);
         for (i, byte) in bytes.iter().enumerate().take(new_self.len) {
             new_self.data[i].write(*byte);
         }
@@ -314,6 +363,12 @@ impl<const CAPACITY: usize> FixedSizeByteString<CAPACITY> {
         }
 
         new_self
+    }
+
+    /// Creates a new [`FixedSizeByteString`] from a string slice. If the string slice does not fit
+    /// into the [`FixedSizeByteString`] it will be truncated.
+    pub fn from_str_truncated(s: &str) -> Self {
+        Self::from_bytes_truncated(s.as_bytes())
     }
 
     /// Creates a new byte string from a given null-terminated string
@@ -332,7 +387,7 @@ impl<const CAPACITY: usize> FixedSizeByteString<CAPACITY> {
         }
 
         let mut new_self = Self::new();
-        std::ptr::copy_nonoverlapping(
+        core::ptr::copy_nonoverlapping(
             ptr,
             new_self.as_mut_bytes().as_mut_ptr() as *mut core::ffi::c_char,
             string_length,
@@ -344,12 +399,12 @@ impl<const CAPACITY: usize> FixedSizeByteString<CAPACITY> {
 
     /// Returns a slice to the underlying bytes
     pub const fn as_bytes(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.data[0].as_ptr(), self.len) }
+        unsafe { core::slice::from_raw_parts(self.data[0].as_ptr(), self.len) }
     }
 
     /// Returns a null-terminated slice to the underlying bytes
     pub const fn as_bytes_with_nul(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.data[0].as_ptr(), self.len + 1) }
+        unsafe { core::slice::from_raw_parts(self.data[0].as_ptr(), self.len + 1) }
     }
 
     /// Returns a zero terminated slice of the underlying bytes
@@ -359,9 +414,23 @@ impl<const CAPACITY: usize> FixedSizeByteString<CAPACITY> {
 
     /// Returns a mutable slice to the underlying bytes
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
-        unsafe { std::slice::from_raw_parts_mut(self.data[0].as_mut_ptr(), self.len) }
+        unsafe { core::slice::from_raw_parts_mut(self.data[0].as_mut_ptr(), self.len) }
     }
 
+    /// Returns the content as a string slice if the bytes are valid UTF-8
+    pub fn as_str(&self) -> Result<&str, core::str::Utf8Error> {
+        core::str::from_utf8(self.as_bytes())
+    }
+
+    /// Returns the content as a string slice without checking for valid UTF-8
+    ///
+    /// # Safety
+    ///
+    ///  * must be valid utf-8
+    ///
+    pub unsafe fn as_str_unchecked(&self) -> &str {
+        core::str::from_utf8_unchecked(self.as_bytes())
+    }
     /// Returns the capacity of the string
     pub const fn capacity(&self) -> usize {
         CAPACITY
@@ -452,7 +521,7 @@ impl<const CAPACITY: usize> FixedSizeByteString<CAPACITY> {
     ///
     pub unsafe fn insert_bytes_unchecked(&mut self, idx: usize, bytes: &[u8]) {
         unsafe {
-            std::ptr::copy(
+            core::ptr::copy(
                 self.data[idx].as_ptr(),
                 self.data[idx].as_mut_ptr().add(bytes.len()),
                 self.len - idx,
@@ -528,7 +597,7 @@ impl<const CAPACITY: usize> FixedSizeByteString<CAPACITY> {
 
     fn remove_range_impl(&mut self, idx: usize, len: usize) {
         unsafe {
-            std::ptr::copy(
+            core::ptr::copy(
                 self.data[idx + len].as_ptr(),
                 self.data[idx].as_mut_ptr(),
                 self.len - (idx + len),

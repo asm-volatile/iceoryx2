@@ -10,30 +10,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-#[macro_use]
-pub mod assert;
+#![warn(clippy::alloc_instead_of_core)]
+#![warn(clippy::std_instead_of_alloc)]
+#![warn(clippy::std_instead_of_core)]
+
+pub use iceoryx2_pal_testing::*;
+
 pub mod lifetime_tracker;
-pub mod memory;
-pub mod watchdog;
-
-#[macro_export(local_inner_macros)]
-macro_rules! test_requires {
-    { $condition:expr } => {
-        if !$condition { return; }
-    }
-}
-
-#[macro_export(local_inner_macros)]
-macro_rules! test_fail {
-    ($($e:expr),*) => {
-        core::panic!(
-            "test failed: {} {} {}",
-            assert_that![color_start],
-            std::format_args!($($e),*).to_string(),
-            assert_that![color_end]
-        )
-    };
-}
-
-pub const AT_LEAST_TIMING_VARIANCE: f32 =
-    iceoryx2_pal_configuration::settings::AT_LEAST_TIMING_VARIANCE;

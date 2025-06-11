@@ -1,19 +1,21 @@
 # Publish-Subscribe With Dynamic Data (Slice Of Shared Memory Compatible Types)
 
-This example demonstrates how to send data when the maximum data size cannot
+This example illustrates how to send data when the maximum data size cannot
 be predetermined and needs to be adjusted dynamically during the service's
 runtime. iceoryx2 enables the reallocation of the publisher's data segment,
 allowing users to send samples of arbitrary sizes.
 
-## Running The Example
-
 > [!CAUTION]
-> Every payload you transmit with iceoryx2 must be compatible with shared
-> memory. Specifically, it must:
+> Every payload you transmit with iceoryx2 must implement [`ZeroCopySend`] to
+> be compatible with shared memory.
+> Usually, you can use the derive-macro `#[derive(ZeroCopySend)]` for most
+> types. If you implement it manually you must ensure that the payload type:
 >
-> * be self contained, no heap, no pointers to external sources
-> * have a uniform memory representation -> `#[repr(C)]`
-> * not use pointers to manage their internal structure
+> * is self contained, no heap, no pointers to external sources
+> * has a uniform memory representation -> `#[repr(C)]`
+> * does not use pointers to manage their internal structure
+> * and its members don't implement `Drop` explicitly
+> * has a `'static` lifetime
 >
 > Data types like `String` or `Vec` will cause undefined behavior and may
 > result in segmentation faults. We provide alternative data types that are
@@ -34,6 +36,8 @@ The `initial_max_slice_len` hint and the `AllocationStrategy` set by the
 publisher will define how memory is reallocated when [`Publisher::loan_slice()`]
 or [`Publisher::loan_slice_uninit()`] request more memory than it is available.
 
+## How to Run
+
 To observe this dynamic communication in action, open two separate terminals and
 execute the following commands:
 
@@ -53,8 +57,9 @@ Feel free to run multiple instances of publisher or subscriber processes
 simultaneously to explore how iceoryx2 handles publisher-subscriber
 communication efficiently.
 
-You may hit the maximum supported number of ports when too many publisher or
-subscriber processes run. Take a look at the [iceoryx2 config](../../../config)
-to set the limits globally or at the
-[API of the Service builder](https://docs.rs/iceoryx2/latest/iceoryx2/service/index.html)
-to set them for a single service.
+> [!TIP]
+> You may hit the maximum supported number of ports when too many publisher or
+> subscriber processes run. Take a look at the
+> [iceoryx2 config](../../../config) to set the limits globally or at the
+> [API of the Service builder](https://docs.rs/iceoryx2/latest/iceoryx2/service/index.html)
+> to set them for a single service.

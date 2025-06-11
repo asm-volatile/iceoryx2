@@ -13,8 +13,8 @@
 #[cfg(test)]
 mod service_static_config_message_type_details {
     use iceoryx2::service::static_config::message_type_details::{TypeDetail, TypeVariant};
+    use iceoryx2_bb_derive_macros::ZeroCopySend;
     use iceoryx2_bb_testing::assert_that;
-    use std::mem::size_of;
 
     #[cfg(target_pointer_width = "32")]
     const ALIGNMENT: usize = 4;
@@ -23,12 +23,13 @@ mod service_static_config_message_type_details {
 
     #[test]
     fn test_internal_new() {
+        #[derive(ZeroCopySend)]
         #[repr(C)]
         struct Tmp;
         let sut = TypeDetail::__internal_new::<Tmp>(TypeVariant::FixedSize);
         let expected = TypeDetail {
             variant: TypeVariant::FixedSize,
-            type_name: core::any::type_name::<Tmp>().to_string(),
+            type_name: core::any::type_name::<Tmp>().try_into().unwrap(),
             size: 0,
             alignment: 1,
         };
@@ -37,18 +38,8 @@ mod service_static_config_message_type_details {
         let sut = TypeDetail::__internal_new::<i64>(TypeVariant::FixedSize);
         let expected = TypeDetail {
             variant: TypeVariant::FixedSize,
-            type_name: core::any::type_name::<i64>().to_string(),
+            type_name: core::any::type_name::<i64>().try_into().unwrap(),
             size: 8,
-            alignment: ALIGNMENT,
-        };
-
-        assert_that!(sut, eq expected);
-
-        let sut = TypeDetail::__internal_new::<TypeDetail>(TypeVariant::FixedSize);
-        let expected = TypeDetail {
-            variant: TypeVariant::FixedSize,
-            type_name: core::any::type_name::<TypeDetail>().to_string(),
-            size: size_of::<TypeDetail>(),
             alignment: ALIGNMENT,
         };
 

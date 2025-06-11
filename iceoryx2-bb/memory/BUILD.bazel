@@ -28,8 +28,6 @@ rust_library(
         "//iceoryx2-bb/log:iceoryx2-bb-log",
         "//iceoryx2-bb/posix:iceoryx2-bb-posix",
         "//iceoryx2-pal/concurrency-sync:iceoryx2-pal-concurrency-sync",
-        "@crate_index//:lazy_static",
-        "@crate_index//:tiny-fn",
     ],
 )
 
@@ -40,6 +38,7 @@ rust_test_suite(
         "iceoryx2-bb-memory",
         "//iceoryx2-bb/elementary:iceoryx2-bb-elementary",
         "//iceoryx2-bb/testing:iceoryx2-bb-testing",
+        "//iceoryx2-pal/testing:iceoryx2-pal-testing",
     ],
     proc_macro_deps = [
         "@crate_index//:generic-tests",

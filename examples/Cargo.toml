@@ -11,10 +11,15 @@ rust-version = { workspace = true }
 version = { workspace = true }
 
 [dependencies]
+iceoryx2-services-discovery = { workspace = true }
 iceoryx2 = { workspace = true }
 iceoryx2-bb-container = { workspace = true }
+iceoryx2-bb-derive-macros = { workspace = true }
+iceoryx2-bb-elementary = { workspace = true }
 iceoryx2-bb-log = { workspace = true }
 iceoryx2-bb-system-types = { workspace = true }
+
+[dev-dependencies]
 clap = { workspace = true }
 
 [lib]
@@ -32,6 +37,10 @@ path = "rust/complex_data_types/complex_data_types.rs"
 [[example]]
 name = "discovery"
 path = "rust/discovery/discovery.rs"
+
+[[example]]
+name = "discovery_service"
+path = "rust/discovery_service/discovery_service.rs"
 
 # event
 
@@ -110,6 +119,36 @@ path = "rust/publish_subscribe_with_user_header/publisher.rs"
 [[example]]
 name = "publish_subscribe_user_header_subscriber"
 path = "rust/publish_subscribe_with_user_header/subscriber.rs"
+
+# publish_subscribe_cross_language
+
+[[example]]
+name = "publish_subscribe_cross_language_publisher"
+path = "rust/publish_subscribe_cross_language/publisher.rs"
+
+[[example]]
+name = "publish_subscribe_cross_language_subscriber"
+path = "rust/publish_subscribe_cross_language/subscriber.rs"
+
+# request_response
+
+[[example]]
+name = "request_response_server"
+path = "rust/request_response/server.rs"
+
+[[example]]
+name = "request_response_client"
+path = "rust/request_response/client.rs"
+
+# request_response_dynamic_data
+
+[[example]]
+name = "request_response_dyn_server"
+path = "rust/request_response_dynamic_data/server.rs"
+
+[[example]]
+name = "request_response_dyn_client"
+path = "rust/request_response_dynamic_data/client.rs"
 
 # service attributes
 

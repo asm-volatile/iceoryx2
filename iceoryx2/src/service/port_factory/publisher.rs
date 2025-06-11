@@ -17,7 +17,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! let pubsub = node.service_builder(&"My/Funk/ServiceName".try_into()?)
 //!     .publish_subscribe::<u64>()
@@ -37,7 +37,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! let pubsub = node.service_builder(&"My/Funk/ServiceName".try_into()?)
 //!     .publish_subscribe::<[u64]>()
@@ -54,83 +54,27 @@
 //! # }
 //! ```
 
-use std::fmt::Debug;
+use core::fmt::Debug;
 
+use iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend;
 use iceoryx2_bb_log::fail;
 use iceoryx2_cal::shm_allocator::AllocationStrategy;
-use serde::{de::Visitor, Deserialize, Serialize};
 
 use super::publish_subscribe::PortFactory;
 use crate::{
     port::{
-        port_identifiers::{UniquePublisherId, UniqueSubscriberId},
-        publisher::Publisher,
-        publisher::PublisherCreateError,
-        DegrationAction, DegrationCallback,
+        publisher::{Publisher, PublisherCreateError},
+        unable_to_deliver_strategy::UnableToDeliverStrategy,
+        DegradationAction, DegradationCallback,
     },
     service,
 };
-
-/// Defines the strategy the [`Publisher`] shall pursue in
-/// [`crate::sample_mut::SampleMut::send()`] or
-/// [`Publisher::send_copy()`] when the buffer of a
-/// [`crate::port::subscriber::Subscriber`] is full and the service does not overflow.
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub enum UnableToDeliverStrategy {
-    /// Blocks until the [`crate::port::subscriber::Subscriber`] has consumed the
-    /// [`crate::sample::Sample`] from the buffer and there is space again
-    Block,
-    /// Do not deliver the [`crate::sample::Sample`].
-    DiscardSample,
-}
-
-impl Serialize for UnableToDeliverStrategy {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&std::format!("{:?}", self))
-    }
-}
-
-struct UnableToDeliverStrategyVisitor;
-
-impl Visitor<'_> for UnableToDeliverStrategyVisitor {
-    type Value = UnableToDeliverStrategy;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a string containing either 'Block' or 'DiscardSample'")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        match v {
-            "Block" => Ok(UnableToDeliverStrategy::Block),
-            "DiscardSample" => Ok(UnableToDeliverStrategy::DiscardSample),
-            v => Err(E::custom(format!(
-                "Invalid UnableToDeliverStrategy provided: \"{:?}\".",
-                v
-            ))),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for UnableToDeliverStrategy {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_str(UnableToDeliverStrategyVisitor)
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct LocalPublisherConfig {
     pub(crate) max_loaned_samples: usize,
     pub(crate) unable_to_deliver_strategy: UnableToDeliverStrategy,
-    pub(crate) degration_callback: Option<DegrationCallback<'static>>,
+    pub(crate) degradation_callback: Option<DegradationCallback<'static>>,
     pub(crate) initial_max_slice_len: usize,
     pub(crate) allocation_strategy: AllocationStrategy,
 }
@@ -142,21 +86,25 @@ pub(crate) struct LocalPublisherConfig {
 pub struct PortFactoryPublisher<
     'factory,
     Service: service::Service,
-    Payload: Debug + ?Sized,
-    UserHeader: Debug,
+    Payload: Debug + ZeroCopySend + ?Sized,
+    UserHeader: Debug + ZeroCopySend,
 > {
     config: LocalPublisherConfig,
     pub(crate) factory: &'factory PortFactory<Service, Payload, UserHeader>,
 }
 
-impl<'factory, Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
-    PortFactoryPublisher<'factory, Service, Payload, UserHeader>
+impl<
+        'factory,
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > PortFactoryPublisher<'factory, Service, Payload, UserHeader>
 {
     pub(crate) fn new(factory: &'factory PortFactory<Service, Payload, UserHeader>) -> Self {
         Self {
             config: LocalPublisherConfig {
                 allocation_strategy: AllocationStrategy::Static,
-                degration_callback: None,
+                degradation_callback: None,
                 initial_max_slice_len: 1,
                 max_loaned_samples: factory
                     .service
@@ -193,23 +141,18 @@ impl<'factory, Service: service::Service, Payload: Debug + ?Sized, UserHeader: D
         self
     }
 
-    /// Sets the [`DegrationCallback`] of the [`Publisher`]. Whenever a connection to a
+    /// Sets the [`DegradationCallback`] of the [`Publisher`]. Whenever a connection to a
     /// [`crate::port::subscriber::Subscriber`] is corrupted or it seems to be dead, this callback
-    /// is called and depending on the returned [`DegrationAction`] measures will be taken.
-    pub fn set_degration_callback<
-        F: Fn(
-                service::static_config::StaticConfig,
-                UniquePublisherId,
-                UniqueSubscriberId,
-            ) -> DegrationAction
-            + 'static,
+    /// is called and depending on the returned [`DegradationAction`] measures will be taken.
+    pub fn set_degradation_callback<
+        F: Fn(&service::static_config::StaticConfig, u128, u128) -> DegradationAction + 'static,
     >(
         mut self,
         callback: Option<F>,
     ) -> Self {
         match callback {
-            Some(c) => self.config.degration_callback = Some(DegrationCallback::new(c)),
-            None => self.config.degration_callback = None,
+            Some(c) => self.config.degradation_callback = Some(DegradationCallback::new(c)),
+            None => self.config.degradation_callback = None,
         }
 
         self
@@ -225,8 +168,11 @@ impl<'factory, Service: service::Service, Payload: Debug + ?Sized, UserHeader: D
     }
 }
 
-impl<Service: service::Service, Payload: Debug, UserHeader: Debug>
-    PortFactoryPublisher<'_, Service, [Payload], UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend,
+        UserHeader: Debug + ZeroCopySend,
+    > PortFactoryPublisher<'_, Service, [Payload], UserHeader>
 {
     /// Sets the maximum slice length that a user can allocate with
     /// [`Publisher::loan_slice()`] or [`Publisher::loan_slice_uninit()`].

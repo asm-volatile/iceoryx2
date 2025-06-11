@@ -12,10 +12,11 @@
 
 #[generic_tests::define]
 mod service_event {
+    use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use core::time::Duration;
     use std::collections::HashSet;
-    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::Barrier;
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
     use iceoryx2::port::listener::{Listener, ListenerCreateError};
     use iceoryx2::port::notifier::{NotifierCreateError, NotifierNotifyError};
@@ -1277,6 +1278,250 @@ mod service_event {
             format!("{}", EventCreateError::InsufficientPermissions), eq "EventCreateError::InsufficientPermissions");
         assert_that!(
             format!("{}", EventCreateError::IsBeingCreatedByAnotherInstance), eq "EventCreateError::IsBeingCreatedByAnotherInstance");
+    }
+
+    #[test]
+    fn deadline_can_be_set<S: Service>() {
+        const DEADLINE: Duration = Duration::from_secs(556);
+        let service_name = generate_name();
+        let mut config = generate_isolated_config();
+        config.defaults.event.deadline = None;
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut_create = node
+            .service_builder(&service_name)
+            .event()
+            .deadline(DEADLINE)
+            .create()
+            .unwrap();
+        let listener_create = sut_create.listener_builder().create().unwrap();
+        let notifier_create = sut_create.notifier_builder().create().unwrap();
+
+        let sut_open = node.service_builder(&service_name).event().open().unwrap();
+        let listener_open = sut_open.listener_builder().create().unwrap();
+        let notifier_open = sut_open.notifier_builder().create().unwrap();
+
+        assert_that!(sut_create.static_config().deadline(), eq Some(DEADLINE));
+        assert_that!(sut_open.static_config().deadline(), eq Some(DEADLINE));
+
+        assert_that!(listener_create.deadline(), eq Some(DEADLINE));
+        assert_that!(listener_open.deadline(), eq Some(DEADLINE));
+        assert_that!(notifier_create.deadline(), eq Some(DEADLINE));
+        assert_that!(notifier_open.deadline(), eq Some(DEADLINE));
+    }
+
+    #[test]
+    fn deadline_can_be_disabled<S: Service>() {
+        const DEADLINE: Duration = Duration::from_secs(556);
+        let service_name = generate_name();
+        let mut config = generate_isolated_config();
+        config.defaults.event.deadline = Some(DEADLINE);
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut_create = node
+            .service_builder(&service_name)
+            .event()
+            .disable_deadline()
+            .create()
+            .unwrap();
+        let listener_create = sut_create.listener_builder().create().unwrap();
+        let notifier_create = sut_create.notifier_builder().create().unwrap();
+
+        let sut_open = node.service_builder(&service_name).event().open().unwrap();
+        let listener_open = sut_open.listener_builder().create().unwrap();
+        let notifier_open = sut_open.notifier_builder().create().unwrap();
+
+        assert_that!(sut_create.static_config().deadline(), eq None);
+        assert_that!(sut_open.static_config().deadline(), eq None);
+
+        assert_that!(listener_create.deadline(), eq None);
+        assert_that!(listener_open.deadline(), eq None);
+        assert_that!(notifier_create.deadline(), eq None);
+        assert_that!(notifier_open.deadline(), eq None);
+    }
+
+    #[test]
+    fn notifier_is_informed_when_deadline_was_missed<S: Service>() {
+        const DEADLINE: Duration = Duration::from_nanos(1);
+        const TIMEOUT: Duration = Duration::from_millis(10);
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut_create = node
+            .service_builder(&service_name)
+            .event()
+            .deadline(DEADLINE)
+            .create()
+            .unwrap();
+
+        let listener = sut_create.listener_builder().create().unwrap();
+        let notifier_create = sut_create.notifier_builder().create().unwrap();
+
+        let sut_open = node.service_builder(&service_name).event().open().unwrap();
+        let notifier_open = sut_open.notifier_builder().create().unwrap();
+
+        std::thread::sleep(TIMEOUT);
+        let result = notifier_create.notify();
+        assert_that!(result.err(), eq Some(NotifierNotifyError::MissedDeadline));
+        assert_that!(listener.try_wait_one().unwrap(), is_some);
+
+        std::thread::sleep(TIMEOUT);
+        let result = notifier_open.notify();
+        assert_that!(result.err(), eq Some(NotifierNotifyError::MissedDeadline));
+        assert_that!(listener.try_wait_one().unwrap(), is_some);
+    }
+
+    #[test]
+    fn when_deadline_is_not_missed_notification_works<S: Service>() {
+        const DEADLINE: Duration = Duration::from_secs(3600);
+        const TIMEOUT: Duration = Duration::from_millis(10);
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut_create = node
+            .service_builder(&service_name)
+            .event()
+            .deadline(DEADLINE)
+            .create()
+            .unwrap();
+
+        let listener = sut_create.listener_builder().create().unwrap();
+        let notifier_create = sut_create.notifier_builder().create().unwrap();
+
+        let sut_open = node.service_builder(&service_name).event().open().unwrap();
+        let notifier_open = sut_open.notifier_builder().create().unwrap();
+
+        std::thread::sleep(TIMEOUT);
+        assert_that!(notifier_create.notify(), is_ok);
+        assert_that!(listener.try_wait_one().unwrap(), is_some);
+
+        std::thread::sleep(TIMEOUT);
+        assert_that!(notifier_open.notify(), is_ok);
+        assert_that!(listener.try_wait_one().unwrap(), is_some);
+    }
+
+    #[test]
+    fn listing_all_notifiers_works<S: Service>() {
+        const NUMBER_OF_NOTIFIERS: usize = 18;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut = node
+            .service_builder(&service_name)
+            .event()
+            .max_notifiers(NUMBER_OF_NOTIFIERS)
+            .create()
+            .unwrap();
+
+        let mut notifiers = vec![];
+
+        for _ in 0..NUMBER_OF_NOTIFIERS {
+            notifiers.push(sut.notifier_builder().create().unwrap());
+        }
+
+        let mut notifier_details = vec![];
+        sut.dynamic_config().list_notifiers(|details| {
+            notifier_details.push(details.notifier_id);
+            CallbackProgression::Continue
+        });
+
+        assert_that!(notifier_details, len NUMBER_OF_NOTIFIERS);
+        for notifier in notifiers {
+            assert_that!(notifier_details, contains notifier.id());
+        }
+    }
+
+    #[test]
+    fn listing_all_notifiers_stops_on_request<S: Service>() {
+        const NUMBER_OF_NOTIFIERS: usize = 11;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut = node
+            .service_builder(&service_name)
+            .event()
+            .max_notifiers(NUMBER_OF_NOTIFIERS)
+            .create()
+            .unwrap();
+
+        let mut notifiers = vec![];
+
+        for _ in 0..NUMBER_OF_NOTIFIERS {
+            notifiers.push(sut.notifier_builder().create().unwrap());
+        }
+
+        let mut counter = 0;
+        sut.dynamic_config().list_notifiers(|_| {
+            counter += 1;
+            CallbackProgression::Stop
+        });
+
+        assert_that!(counter, eq 1);
+    }
+
+    #[test]
+    fn listing_all_listeners_works<S: Service>() {
+        const NUMBER_OF_LISTENERS: usize = 14;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut = node
+            .service_builder(&service_name)
+            .event()
+            .max_listeners(NUMBER_OF_LISTENERS)
+            .create()
+            .unwrap();
+
+        let mut listeners = vec![];
+
+        for _ in 0..NUMBER_OF_LISTENERS {
+            listeners.push(sut.listener_builder().create().unwrap());
+        }
+
+        let mut listener_details = vec![];
+        sut.dynamic_config().list_listeners(|details| {
+            listener_details.push(details.listener_id);
+            CallbackProgression::Continue
+        });
+
+        assert_that!(listener_details, len NUMBER_OF_LISTENERS);
+        for listener in listeners {
+            assert_that!(listener_details, contains listener.id());
+        }
+    }
+
+    #[test]
+    fn listing_all_listeners_stops_on_request<S: Service>() {
+        const NUMBER_OF_LISTENERS: usize = 11;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut = node
+            .service_builder(&service_name)
+            .event()
+            .max_listeners(NUMBER_OF_LISTENERS)
+            .create()
+            .unwrap();
+
+        let mut listeners = vec![];
+
+        for _ in 0..NUMBER_OF_LISTENERS {
+            listeners.push(sut.listener_builder().create().unwrap());
+        }
+
+        let mut counter = 0;
+        sut.dynamic_config().list_listeners(|_| {
+            counter += 1;
+            CallbackProgression::Stop
+        });
+
+        assert_that!(counter, eq 1);
     }
 
     #[instantiate_tests(<iceoryx2::service::ipc::Service>)]

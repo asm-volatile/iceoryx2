@@ -10,13 +10,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::{
+use core::{
     sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
 
-use iceoryx2_bb_testing::assert_that;
 use iceoryx2_pal_concurrency_sync::{barrier::Barrier, rwlock::*, WaitAction, WaitResult};
+use iceoryx2_pal_testing::assert_that;
 
 const TIMEOUT: Duration = Duration::from_millis(25);
 

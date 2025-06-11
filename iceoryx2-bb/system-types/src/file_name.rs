@@ -28,6 +28,7 @@
 //! ```
 
 pub use iceoryx2_bb_container::semantic_string::SemanticString;
+use iceoryx2_bb_derive_macros::ZeroCopySend;
 use iceoryx2_bb_elementary::static_assert::{static_assert_ge, static_assert_le};
 
 use core::hash::{Hash, Hasher};
@@ -61,7 +62,7 @@ fn invalid_content(value: &[u8]) -> bool {
 }
 
 fn normalize(this: &FileName) -> FileName {
-    *this
+    this.clone()
 }
 
 semantic_string! {
@@ -74,7 +75,8 @@ semantic_string! {
   normalize: normalize
 }
 
-#[derive(Debug, Clone, Copy, Eq)]
+#[derive(Debug, Clone, Eq, ZeroCopySend)]
+#[repr(C)]
 pub struct RestrictedFileName<const CAPACITY: usize> {
     value: iceoryx2_bb_container::byte_string::FixedSizeByteString<CAPACITY>,
 }
@@ -123,7 +125,7 @@ pub(crate) mod visitor_type {
 impl<const CAPACITY: usize> serde::de::Visitor<'_> for visitor_type::RestrictedFileName<CAPACITY> {
     type Value = RestrictedFileName<CAPACITY>;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
         formatter.write_str("a string containing the service name")
     }
 
@@ -156,7 +158,7 @@ impl<const CAPACITY: usize> serde::Serialize for RestrictedFileName<CAPACITY> {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(std::str::from_utf8(self.as_bytes()).unwrap())
+        serializer.serialize_str(core::str::from_utf8(self.as_bytes()).unwrap())
     }
 }
 // END: serde
@@ -169,7 +171,7 @@ impl<const CAPACITY: usize> iceoryx2_bb_container::semantic_string::SemanticStri
     }
 
     fn normalize(&self) -> Self {
-        *self
+        self.clone()
     }
 
     unsafe fn new_unchecked(bytes: &[u8]) -> Self {
@@ -190,8 +192,8 @@ impl<const CAPACITY: usize> RestrictedFileName<CAPACITY> {
     }
 }
 
-impl<const CAPACITY: usize> std::fmt::Display for RestrictedFileName<CAPACITY> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<const CAPACITY: usize> core::fmt::Display for RestrictedFileName<CAPACITY> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "{}", self.value)
     }
 }
@@ -224,7 +226,7 @@ impl<const CAPACITY: usize> From<&RestrictedFileName<CAPACITY>> for String {
     }
 }
 
-impl<const CAPACITY: usize> std::convert::TryFrom<&str> for RestrictedFileName<CAPACITY> {
+impl<const CAPACITY: usize> core::convert::TryFrom<&str> for RestrictedFileName<CAPACITY> {
     type Error = iceoryx2_bb_container::semantic_string::SemanticStringError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -232,7 +234,7 @@ impl<const CAPACITY: usize> std::convert::TryFrom<&str> for RestrictedFileName<C
     }
 }
 
-impl<const CAPACITY: usize> std::convert::TryFrom<&FileName> for RestrictedFileName<CAPACITY> {
+impl<const CAPACITY: usize> core::convert::TryFrom<&FileName> for RestrictedFileName<CAPACITY> {
     type Error = iceoryx2_bb_container::semantic_string::SemanticStringError;
 
     fn try_from(value: &FileName) -> Result<Self, Self::Error> {
@@ -294,7 +296,7 @@ impl<const CAPACITY: usize> PartialEq<&[u8; CAPACITY]> for RestrictedFileName<CA
     }
 }
 
-impl<const CAPACITY: usize> std::ops::Deref for RestrictedFileName<CAPACITY> {
+impl<const CAPACITY: usize> core::ops::Deref for RestrictedFileName<CAPACITY> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {

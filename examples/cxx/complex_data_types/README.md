@@ -1,16 +1,12 @@
 # Complex Data Types
 
-Before proceeding, all dependencies need to be installed. You can find
-instructions in the [C++ Examples Readme](../README.md).
-
-## Running The Example
-
 > [!CAUTION]
 > Every payload you transmit with iceoryx2 must be compatible with shared
 > memory. Specifically, it must:
 >
 > * be self contained, no heap, no pointers to external sources
 > * not use pointers to manage their internal structure
+> * must be trivially destructible, see `std::is_trivially_destructible`
 
 This example demonstrates how the zero-copy compatible versions of
 `std::vector` or `std::string` can be sent.
@@ -19,12 +15,19 @@ The library
 provides versions that are shared memory compatible like the
 `iox::string` and the `iox::vector`.
 
+## How to Build
+
+Before proceeding, all dependencies need to be installed. You can find
+instructions in the [C++ Examples Readme](../README.md).
+
 First you have to build the C++ examples:
 
 ```sh
 cmake -S . -B target/ffi/build -DBUILD_EXAMPLES=ON
 cmake --build target/ffi/build
 ```
+
+## How to Run
 
 To see the example in action, open a terminal and enter:
 

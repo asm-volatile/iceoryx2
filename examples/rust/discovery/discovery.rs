@@ -12,7 +12,8 @@
 
 use iceoryx2::prelude::*;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn core::error::Error>> {
+    set_log_level_from_env_or(LogLevel::Info);
     ipc::Service::list(Config::global_config(), |service| {
         println!("\n{:#?}", &service);
         CallbackProgression::Continue

@@ -27,9 +27,9 @@ TEST(AttributeVerifier, require_is_listed_in_attributes) {
 
     auto attributes = attribute_verifier.attributes();
 
-    ASSERT_THAT(attributes.len(), Eq(1));
-    ASSERT_THAT(attributes.at(0).key(), Eq(key));
-    ASSERT_THAT(attributes.at(0).value(), Eq(value));
+    ASSERT_THAT(attributes.number_of_attributes(), Eq(1));
+    ASSERT_THAT(attributes[0].key(), Eq(key));
+    ASSERT_THAT(attributes[0].value(), Eq(value));
 }
 
 TEST(AttributeVerifier, required_keys_are_listed_in_keys) {
@@ -80,11 +80,11 @@ TEST(AttributeSpecifier, all_defined_attributes_are_set) {
     auto attribute_specifier = AttributeSpecifier().define(key_1, value_1).define(key_2, value_2);
     auto attributes = attribute_specifier.attributes();
 
-    ASSERT_THAT(attributes.len(), Eq(2));
-    ASSERT_THAT(attributes.at(0).key(), Eq(key_1));
-    ASSERT_THAT(attributes.at(0).value(), Eq(value_1));
-    ASSERT_THAT(attributes.at(1).key(), Eq(key_2));
-    ASSERT_THAT(attributes.at(1).value(), Eq(value_2));
+    ASSERT_THAT(attributes.number_of_attributes(), Eq(2));
+    ASSERT_THAT(attributes[0].key(), Eq(key_1));
+    ASSERT_THAT(attributes[0].value(), Eq(value_1));
+    ASSERT_THAT(attributes[1].key(), Eq(key_2));
+    ASSERT_THAT(attributes[1].value(), Eq(value_2));
 }
 
 TEST(AttributeSet, all_key_values_can_be_listed) {
@@ -95,11 +95,11 @@ TEST(AttributeSet, all_key_values_can_be_listed) {
     auto attribute_specifer = AttributeSpecifier().define(key, value_1).define(key, value_2);
     auto attributes = attribute_specifer.attributes();
 
-    ASSERT_THAT(attributes.len(), Eq(2));
-    ASSERT_THAT(attributes.at(0).key(), Eq(key));
-    ASSERT_THAT(attributes.at(1).key(), Eq(key));
-    ASSERT_THAT(attributes.at(0).value(), Eq(value_1));
-    ASSERT_THAT(attributes.at(1).value(), Eq(value_2));
+    ASSERT_THAT(attributes.number_of_attributes(), Eq(2));
+    ASSERT_THAT(attributes[0].key(), Eq(key));
+    ASSERT_THAT(attributes[1].key(), Eq(key));
+    ASSERT_THAT(attributes[0].value(), Eq(value_1));
+    ASSERT_THAT(attributes[1].value(), Eq(value_2));
 }
 
 TEST(AttributeSet, all_key_values_can_be_acquired) {
@@ -112,10 +112,66 @@ TEST(AttributeSet, all_key_values_can_be_acquired) {
 
     auto counter = 0;
 
-    attributes.get_key_values(key, [&](const auto& value) -> CallbackProgression {
+    attributes.iter_key_values(key, [&](const auto& value) -> CallbackProgression {
         EXPECT_THAT(value, Eq(values[counter]));
         counter++;
         return CallbackProgression::Continue;
     });
+}
+
+TEST(AttributeSet, get_key_value_len_works) {
+    auto empty_key = Attribute::Key("fuu");
+    auto key = Attribute::Key("whatever");
+    auto value_1 = Attribute::Value("you");
+    auto value_2 = Attribute::Value("want");
+
+    auto attribute_specifer = AttributeSpecifier().define(key, value_1).define(key, value_2);
+    auto attributes = attribute_specifer.attributes();
+
+    ASSERT_THAT(attributes.number_of_key_values(key), Eq(2));
+    ASSERT_THAT(attributes.number_of_key_values(empty_key), Eq(0));
+}
+
+//NOLINTBEGIN(readability-function-cognitive-complexity), false positive caused by ASSERT_THAT
+TEST(AttributeSet, get_key_value_at_works) {
+    auto key = Attribute::Key("schmu whatever");
+    auto value_1 = Attribute::Value("fuu you");
+    auto value_2 = Attribute::Value("blue want");
+
+    auto attribute_specifer = AttributeSpecifier().define(key, value_1).define(key, value_2);
+    auto attributes = attribute_specifer.attributes();
+
+    auto v_1 = attributes.key_value(key, 0);
+    auto v_2 = attributes.key_value(key, 1);
+    auto v_3 = attributes.key_value(key, 2);
+
+    ASSERT_THAT(v_1.has_value(), Eq(true));
+    ASSERT_THAT(v_2.has_value(), Eq(true));
+    ASSERT_THAT(v_3.has_value(), Eq(false));
+
+    if (v_1->size() == value_1.size()) {
+        ASSERT_THAT(v_1.value().c_str(), StrEq(value_1.c_str()));
+        ASSERT_THAT(v_2.value().c_str(), StrEq(value_2.c_str()));
+    } else {
+        ASSERT_THAT(v_2.value().c_str(), StrEq(value_1.c_str()));
+        ASSERT_THAT(v_1.value().c_str(), StrEq(value_2.c_str()));
+    }
+}
+//NOLINTEND(readability-function-cognitive-complexity)
+
+TEST(AttributeSet, to_owned_works) {
+    auto key = Attribute::Key("your mind becomes a galaxy");
+    auto value_1 = Attribute::Value("shiny and bright");
+    auto value_2 = Attribute::Value("with spice aroma");
+
+    auto attribute_specifer = AttributeSpecifier().define(key, value_1).define(key, value_2);
+    auto attributes = attribute_specifer.attributes();
+    auto attributes_owned = attributes.to_owned();
+
+    ASSERT_THAT(attributes_owned.number_of_attributes(), Eq(2));
+    ASSERT_THAT(attributes_owned[0].key(), Eq(key));
+    ASSERT_THAT(attributes_owned[1].key(), Eq(key));
+    ASSERT_THAT(attributes_owned[0].value(), Eq(value_1));
+    ASSERT_THAT(attributes_owned[1].value(), Eq(value_2));
 }
 } // namespace

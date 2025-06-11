@@ -18,8 +18,10 @@ use crate::api::{
 use crate::c_size_t;
 
 use iceoryx2::prelude::*;
+use iceoryx2::service::service_name::ServiceNameError;
 use iceoryx2_bb_elementary::static_assert::*;
-use iceoryx2_ffi_macros::iceoryx2_ffi;
+use iceoryx2_bb_elementary::AsCStr;
+use iceoryx2_ffi_macros::{iceoryx2_ffi, CStrRepr};
 
 use core::ffi::{c_char, c_int};
 use core::{slice, str};
@@ -27,9 +29,27 @@ use core::{slice, str};
 // BEGIN type definition
 
 #[repr(C)]
+#[derive(Copy, Clone, CStrRepr)]
+pub enum iox2_service_name_error_e {
+    INVALID_CONTENT = IOX2_OK as isize + 1,
+    EXCEEDS_MAXIMUM_LENGTH,
+}
+
+impl IntoCInt for ServiceNameError {
+    fn into_c_int(self) -> c_int {
+        (match self {
+            ServiceNameError::InvalidContent => iox2_service_name_error_e::INVALID_CONTENT,
+            ServiceNameError::ExceedsMaximumLength => {
+                iox2_service_name_error_e::EXCEEDS_MAXIMUM_LENGTH
+            }
+        }) as c_int
+    }
+}
+
+#[repr(C)]
 #[repr(align(8))] // alignment of Option<ServiceName>
 pub struct iox2_service_name_storage_t {
-    internal: [u8; 24], // magic number obtained with size_of::<Option<ServiceName>>()
+    internal: [u8; 272], // magic number obtained with size_of::<Option<ServiceName>>()
 }
 
 #[repr(C)]
@@ -112,7 +132,7 @@ pub unsafe extern "C" fn iox2_service_name_new(
     debug_assert!(!service_name_str.is_null());
     debug_assert!(!service_name_handle_ptr.is_null());
 
-    *service_name_handle_ptr = std::ptr::null_mut();
+    *service_name_handle_ptr = core::ptr::null_mut();
 
     let mut service_name_struct_ptr = service_name_struct_ptr;
     fn no_op(_: *mut iox2_service_name_t) {}
@@ -224,7 +244,7 @@ pub unsafe extern "C" fn iox2_service_name_drop(service_name_handle: iox2_servic
 
     let service_name = &mut *service_name_handle.as_type();
 
-    std::ptr::drop_in_place(service_name.value.as_option_mut());
+    core::ptr::drop_in_place(service_name.value.as_option_mut());
     (service_name.deleter)(service_name);
 }
 

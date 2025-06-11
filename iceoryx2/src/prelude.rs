@@ -12,20 +12,23 @@
 
 pub use crate::config::Config;
 pub use crate::node::{node_name::NodeName, Node, NodeBuilder, NodeState};
-pub use crate::port::event_id::EventId;
+pub use crate::port::{event_id::EventId, unable_to_deliver_strategy::UnableToDeliverStrategy};
 pub use crate::service::messaging_pattern::MessagingPattern;
 pub use crate::service::{
     attribute::AttributeSet, attribute::AttributeSpecifier, attribute::AttributeVerifier, ipc,
-    local, port_factory::publisher::UnableToDeliverStrategy, port_factory::PortFactory,
-    service_name::ServiceName, Service, ServiceDetails,
+    local, port_factory::PortFactory, service_name::ServiceName, Service, ServiceDetails,
 };
 pub use crate::signal_handling_mode::SignalHandlingMode;
 pub use crate::waitset::{WaitSet, WaitSetAttachmentId, WaitSetBuilder, WaitSetGuard};
 pub use iceoryx2_bb_derive_macros::PlacementDefault;
+pub use iceoryx2_bb_derive_macros::ZeroCopySend;
 pub use iceoryx2_bb_elementary::alignment::Alignment;
 pub use iceoryx2_bb_elementary::placement_default::PlacementDefault;
+pub use iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend;
 pub use iceoryx2_bb_elementary::CallbackProgression;
 pub use iceoryx2_bb_log::set_log_level;
+pub use iceoryx2_bb_log::set_log_level_from_env_or;
+pub use iceoryx2_bb_log::set_log_level_from_env_or_default;
 pub use iceoryx2_bb_log::LogLevel;
 pub use iceoryx2_bb_posix::file_descriptor::{FileDescriptor, FileDescriptorBased};
 pub use iceoryx2_bb_posix::file_descriptor_set::SynchronousMultiplexing;

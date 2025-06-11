@@ -44,6 +44,7 @@ pub enum iox2_service_type_e {
 pub enum iox2_messaging_pattern_e {
     PUBLISH_SUBSCRIBE = 0,
     EVENT,
+    REQUEST_RESPONSE,
 }
 
 impl From<iox2_messaging_pattern_e> for MessagingPattern {
@@ -51,6 +52,7 @@ impl From<iox2_messaging_pattern_e> for MessagingPattern {
         match value {
             iox2_messaging_pattern_e::EVENT => MessagingPattern::Event,
             iox2_messaging_pattern_e::PUBLISH_SUBSCRIBE => MessagingPattern::PublishSubscribe,
+            iox2_messaging_pattern_e::REQUEST_RESPONSE => MessagingPattern::RequestResponse,
         }
     }
 }
@@ -65,6 +67,9 @@ impl From<&iceoryx2::service::static_config::messaging_pattern::MessagingPattern
             }
             iceoryx2::service::static_config::messaging_pattern::MessagingPattern::PublishSubscribe(_) => {
                 iox2_messaging_pattern_e::PUBLISH_SUBSCRIBE
+            }
+            iceoryx2::service::static_config::messaging_pattern::MessagingPattern::RequestResponse(_) => {
+                iox2_messaging_pattern_e::REQUEST_RESPONSE
             }
             _ => unreachable!()
         }
@@ -228,19 +233,55 @@ pub unsafe extern "C" fn iox2_service_does_exist(
 /// * The `service_name` must be valid and non-null
 /// * The `config` must be valid and non-null
 /// * The `service_details` must be valid and non-null
+/// * The `does_exist` must be valid and non-null
 #[no_mangle]
 pub unsafe extern "C" fn iox2_service_details(
-    _service_type: iox2_service_type_e,
+    service_type: iox2_service_type_e,
     service_name: iox2_service_name_ptr,
     config: iox2_config_ptr,
-    _messaging_pattern: iox2_messaging_pattern_e,
+    messaging_pattern: iox2_messaging_pattern_e,
     service_details: *mut iox2_static_config_t,
+    does_exist: *mut bool,
 ) -> c_int {
     debug_assert!(!service_name.is_null());
     debug_assert!(!config.is_null());
     debug_assert!(!service_details.is_null());
+    debug_assert!(!does_exist.is_null());
 
-    todo!()
+    let config = &*config;
+    let service_name = &*service_name;
+    let messaging_pattern = messaging_pattern.into();
+
+    match service_type {
+        iox2_service_type_e::IPC => {
+            match ipc::Service::details(service_name, config, messaging_pattern) {
+                Ok(None) => {
+                    does_exist.write(false);
+                    IOX2_OK
+                }
+                Err(e) => e.into_c_int(),
+                Ok(Some(v)) => {
+                    service_details.write((&v.static_details).into());
+                    does_exist.write(true);
+                    IOX2_OK
+                }
+            }
+        }
+        iox2_service_type_e::LOCAL => {
+            match local::Service::details(service_name, config, messaging_pattern) {
+                Ok(None) => {
+                    does_exist.write(false);
+                    IOX2_OK
+                }
+                Err(e) => e.into_c_int(),
+                Ok(Some(v)) => {
+                    service_details.write((&v.static_details).into());
+                    does_exist.write(true);
+                    IOX2_OK
+                }
+            }
+        }
+    }
 }
 
 fn list_callback<S: Service>(

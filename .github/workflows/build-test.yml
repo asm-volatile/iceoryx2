@@ -22,10 +22,10 @@ jobs:
       markdown: ${{ steps.filter.outputs.markdown }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
 
       - name: Check for changed file types
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # ratchet:dorny/paths-filter@v3
         id: filter
         with:
           filters: |
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
 
       - name: Check format of all commit messages
         run: ./internal/scripts/ci_test_commit_msg.sh
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
 
       - name: Setup GitHub CLI
         run: |
@@ -68,12 +68,12 @@ jobs:
           && sudo apt install gh -y
 
       - name: Setup node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@1a4442cacd436585916779262731d5b162bc6ec7 # ratchet:actions/setup-node@v3
         with:
           node-version: '20'
 
       - name: Install linters
-        run: npm install -g markdownlint-cli prettier
+        run: npm install -g markdownlint-cli
 
       - name: Check linting
         env:
@@ -81,7 +81,7 @@ jobs:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_BEFORE: ${{ github.event.before }}
           GITHUB_AFTER: ${{ github.event.after }}
-        run: ./internal/scripts/check_markdown_linting.sh
+        run: ./internal/scripts/ci_check_markdown_linting.sh
 
   static-code-analysis-rust:
     needs: preflight-check
@@ -89,14 +89,19 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest, macOS-latest]
+        cargo-features-flag: [""]
+        include:
+          - os: ubuntu-latest
+            cargo-features-flag: "--features libc_platform"
+
     timeout-minutes: 10
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
+        uses: dtolnay/rust-toolchain@888c2e1ea69ab0d4330cbf0af1ecc7b68f368cc1 # ratchet:dtolnay/rust-toolchain@v1
         with:
           toolchain: stable
           components: rustfmt, clippy
@@ -105,22 +110,22 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy ${{ matrix.cargo-features-flag }} -- -D warnings
 
       - name: Run code examples in documentation
-        run: cargo test --workspace --doc
+        run: cargo test --workspace --doc ${{ matrix.cargo-features-flag }}
 
       - name: Build documentation
-        run: cargo doc
+        run: cargo doc ${{ matrix.cargo-features-flag }}
 
   static-code-analysis-cpp:
     needs: preflight-check
     if: ${{ needs.changes.outputs.source-code == 'true' }}
-    timeout-minutes: 10
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
 
       - name: Install clang-tidy and clang-format
         uses: ./.github/actions/install-iceoryx-deps-and-clang
@@ -153,7 +158,7 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
     - name: Build and cache cargo-nextest
       uses: ./.github/actions/build-and-cache-rust-tool
       with:
@@ -171,7 +176,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest] # [windows-latest, ubuntu-latest, macos-latest]
-        toolchain: [stable] # [stable, 1.75.0, beta, nightly]
+        toolchain: [stable] # [stable, 1.81.0, beta, nightly]
         mode:
           - name: "release"
             arg: "--release"
@@ -183,10 +188,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
+ 
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.31.x'
+      - name: Use cmake
+        run: cmake --version
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
+        uses: dtolnay/rust-toolchain@888c2e1ea69ab0d4330cbf0af1ecc7b68f368cc1 # ratchet:dtolnay/rust-toolchain@v1
         with:
           toolchain: ${{ matrix.toolchain }}
           targets: i686-unknown-linux-gnu
@@ -261,8 +273,8 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
         # NOTE: enable for MinGW
-        # toolchain: [stable, stable-gnu, 1.75.0]
-        toolchain: [stable, 1.75.0]
+        # toolchain: [stable, stable-gnu, 1.81.0]
+        toolchain: [stable, 1.81.0]
         mode:
           - name: "release"
             arg: "--release"
@@ -272,6 +284,7 @@ jobs:
             arg: ""
             cmake-build-type: "-DCMAKE_BUILD_TYPE=Debug" # required for Makefile Generators at config time
             cmake-build-config: "--config Debug" # required for Visual Studio at build and install time
+        cargo-features-flag: ["", "--features libc_platform"]
         include:
           # NOTE: enable for MinGW
           # - toolchain: stable-gnu
@@ -279,20 +292,33 @@ jobs:
           - os: windows-latest
             toolchain: stable
             cmake-cxx-flags: '-DCMAKE_CXX_FLAGS="/MP"'
-        # NOTE: enable for MinGW
-        # exclude:
-        #  - os: ubuntu-latest
-        #    toolchain: stable-gnu
-        #  - os: macos-latest
-        #    toolchain: stable-gnu
+          - os: ubuntu-latest
+            toolchain: stable
+        exclude:
+          # NOTE: enable for MinGW
+          # - os: ubuntu-latest
+          #   toolchain: stable-gnu
+          # - os: macos-latest
+          #   toolchain: stable-gnu
+          - os: windows-latest
+            cargo-features-flag: "--features libc_platform"
+          - os: macos-latest
+            cargo-features-flag: "--features libc_platform"
     timeout-minutes: 60
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
+
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.31.x'
+      - name: Use cmake
+        run: cmake --version
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
+        uses: dtolnay/rust-toolchain@888c2e1ea69ab0d4330cbf0af1ecc7b68f368cc1 # ratchet:dtolnay/rust-toolchain@v1
         with:
           toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
@@ -313,10 +339,10 @@ jobs:
           uname -a
 
       - name: Run cargo build
-        run: cargo build --workspace --all-targets ${{ matrix.mode.arg }}
+        run: cargo build --workspace --all-targets ${{ matrix.mode.arg }} ${{ matrix.cargo-features-flag }}
 
       - name: Run cargo nextest
-        run: cargo nextest run --workspace --all-targets --no-fail-fast ${{ matrix.mode.arg }}
+        run: cargo nextest run --workspace --all-targets --no-fail-fast ${{ matrix.mode.arg }} ${{ matrix.cargo-features-flag }}
 
       - name: Build iceoryx_hoofs on Windows
         if: ${{ matrix.os == 'windows-latest' }}
@@ -380,10 +406,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
+
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.31.x'
+      - name: Use cmake
+        run: cmake --version
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
+        uses: dtolnay/rust-toolchain@888c2e1ea69ab0d4330cbf0af1ecc7b68f368cc1 # ratchet:dtolnay/rust-toolchain@v1
         with:
           toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
@@ -417,11 +450,11 @@ jobs:
   #   strategy:
   #     matrix:
   #       architecture: ["aarch64"] # ["aarch64", "armv7"]
-  #       toolchain: [ stable ] # [stable, 1.75.0, beta, nightly]
+  #       toolchain: [ stable ] # [stable, 1.81.0, beta, nightly]
   #       mode: ["--release", ""]
   #   timeout-minutes: 30
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
   #     - uses: uraimo/run-on-arch-action@v2
   #       name: Run commands
   #       with:
@@ -443,11 +476,11 @@ jobs:
     strategy:
       matrix:
         freebsd_version: [ "14.0" ] 
-        toolchain: [ "stable", "1.75.0" ] # [stable, 1.75.0, beta, nightly]
+        toolchain: [ "stable", "1.81.0" ] # [stable, 1.81.0, beta, nightly]
         mode: ["debug"] # ["release", "debug"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: vmactions/freebsd-vm@v1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
+      - uses: vmactions/freebsd-vm@8873d98fd1413b5977cb2f7348fe329775159892 # ratchet:vmactions/freebsd-vm@v1
         with:
           release: ${{ matrix.freebsd_version }}
           mem: 16384
@@ -469,10 +502,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@v1
+        uses: dtolnay/rust-toolchain@888c2e1ea69ab0d4330cbf0af1ecc7b68f368cc1 # ratchet:dtolnay/rust-toolchain@v1
         with:
           toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
@@ -483,7 +516,7 @@ jobs:
           uname -a
 
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@0.9.1
+        uses: bazel-contrib/setup-bazel@f3f50ea6791b9b0f4c4eeabba4507422426462f5 # ratchet:bazel-contrib/setup-bazel@0.9.1
 
       - name: Run bazel build
         env:
@@ -501,15 +534,15 @@ jobs:
     timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
     - name: Build and cache grcov
       uses: ./.github/actions/build-and-cache-rust-tool
       with:
-        rust-toolchain: stable
-        rust-components: llvm-tools-preview
+        rust-toolchain: 1.86.0
+        rust-components: llvm-tools
         check-and-install-cmd: grcov --version > /dev/null || cargo install grcov
         print-version-cmd: grcov --version
-        cache-key: cache-1-${{ runner.os }}-grcov
+        cache-key: cache-2-${{ runner.os }}-grcov
         artifact-bin-name: grcov
         artifact-upload-name: ${{ runner.os }}-grcov
 
@@ -518,10 +551,10 @@ jobs:
     if: ${{ needs.changes.outputs.source-code == 'true' }}
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
 
     - name: Install dependencies
-      run: sudo apt-get -y install libacl1-dev llvm
+      uses: ./.github/actions/install-iceoryx-deps-and-clang
 
     - name: Create test users and groups
       run: |
@@ -531,10 +564,10 @@ jobs:
         sudo groupadd testgroup2
 
     - name: Setup Rust
-      uses: dtolnay/rust-toolchain@v1
+      uses: dtolnay/rust-toolchain@888c2e1ea69ab0d4330cbf0af1ecc7b68f368cc1 # ratchet:dtolnay/rust-toolchain@v1
       with:
-        toolchain: stable
-        components: llvm-tools-preview
+        toolchain: 1.86.0
+        components: llvm-tools
 
     - name: Download artifact grcov
       uses: ./.github/actions/download-cached-rust-tool
@@ -549,7 +582,7 @@ jobs:
       run: ./internal/scripts/generate-cov-report.sh --html
 
     - name: Archive coverage-html artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # ratchet:actions/upload-artifact@v4
       with:
         name: coverage-html
         path: target/debug/coverage/html/*
@@ -559,7 +592,7 @@ jobs:
       run: ./internal/scripts/generate-cov-report.sh --lcov
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # ratchet:codecov/codecov-action@v4
       with:
         file: target/debug/coverage/lcov.info
         fail_ci_if_error: false

@@ -1,14 +1,16 @@
 # Publish-Subscribe With User Header
 
-## Running The Example
-
 > [!CAUTION]
-> Every payload you transmit with iceoryx2 must be compatible with shared
-> memory. Specifically, it must:
+> Every payload you transmit with iceoryx2 must implement [`ZeroCopySend`] to
+> be compatible with shared memory.
+> Usually, you can use the derive-macro `#[derive(ZeroCopySend)]` for most
+> types. If you implement it manually you must ensure that the payload type:
 >
-> * be self contained, no heap, no pointers to external sources
-> * have a uniform memory representation -> `#[repr(C)]`
-> * not use pointers to manage their internal structure
+> * is self contained, no heap, no pointers to external sources
+> * has a uniform memory representation -> `#[repr(C)]`
+> * does not use pointers to manage their internal structure
+> * and its members don't implement `Drop` explicitly
+> * has a `'static` lifetime
 >
 > Data types like `String` or `Vec` will cause undefined behavior and may
 > result in segmentation faults. We provide alternative data types that are
@@ -22,6 +24,8 @@ two separate processes with an additional user header, referred to as a
 incrementing number and the `CustomHeader`, which includes an additional version
 number and a timestamp. On the receiving end, the subscriber checks for new data
 every second and prints out the received payload and the user header.
+
+## How to Run
 
 To observe this dynamic communication in action, open two separate terminals and
 execute the following commands:
@@ -42,6 +46,7 @@ Feel free to run multiple instances of the publisher or subscriber processes
 simultaneously to explore how iceoryx2 handles publisher-subscriber
 communication efficiently.
 
+> [!TIP]
 You may hit the maximum supported number of ports when too many publisher or
 subscriber processes are running. Check the [iceoryx2 config](../../../config)
 to set the limits globally or refer to the

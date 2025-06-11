@@ -14,6 +14,7 @@ pub use iceoryx2_bb_container::semantic_string::SemanticString;
 
 use core::hash::{Hash, Hasher};
 use iceoryx2_bb_container::semantic_string;
+use iceoryx2_bb_derive_macros::ZeroCopySend;
 use iceoryx2_pal_configuration::FILENAME_LENGTH;
 
 use crate::file_name::FileName;
@@ -35,7 +36,7 @@ semantic_string! {
     })
   },
   normalize: |this: &Base64Url| {
-      *this
+      this.clone()
   }
 }
 

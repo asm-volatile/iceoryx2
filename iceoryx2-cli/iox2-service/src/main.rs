@@ -19,13 +19,15 @@ mod cli;
 mod commands;
 mod filter;
 
-use clap::CommandFactory;
+use anyhow::Result;
 use clap::Parser;
 use cli::Action;
 use cli::Cli;
-use iceoryx2_bb_log::{set_log_level, LogLevel};
+use iceoryx2_bb_log::error;
+use iceoryx2_bb_log::set_log_level_from_env_or;
+use iceoryx2_bb_log::LogLevel;
 
-fn main() {
+fn main() -> Result<()> {
     #[cfg(not(debug_assertions))]
     {
         setup_panic!();
@@ -39,31 +41,37 @@ fn main() {
             .install();
     }
 
-    set_log_level(LogLevel::Warn);
+    set_log_level_from_env_or(LogLevel::Warn);
 
-    match Cli::try_parse() {
-        Ok(cli) => {
-            if let Some(action) = cli.action {
-                match action {
-                    Action::List(options) => {
-                        if let Err(e) = commands::list(options.filter, cli.format) {
-                            eprintln!("Failed to list services: {}", e);
-                        }
-                    }
-                    Action::Details(options) => {
-                        if let Err(e) =
-                            commands::details(options.service, options.filter, cli.format)
-                        {
-                            eprintln!("Failed to retrieve service details: {}", e);
-                        }
-                    }
+    let cli = Cli::parse();
+    if let Some(action) = cli.action {
+        match action {
+            Action::List(options) => {
+                if let Err(e) = commands::list(options.filter, cli.format) {
+                    error!("failed to list services: {}", e);
                 }
-            } else {
-                Cli::command().print_help().expect("Failed to print help");
+            }
+            Action::Details(options) => {
+                if let Err(e) = commands::details(options.service, options.filter, cli.format) {
+                    error!("failed to retrieve service details: {}", e);
+                }
+            }
+            Action::Discovery(options) => {
+                let should_publish = !options.disable_publish;
+                let should_notify = !options.disable_notify;
+                if let Err(e) = commands::discovery(
+                    options.rate,
+                    should_publish,
+                    options.max_subscribers,
+                    should_notify,
+                    options.max_listeners,
+                    cli.format,
+                ) {
+                    error!("failed to run service discovery: {:#}", e)
+                }
             }
         }
-        Err(e) => {
-            eprintln!("{}", e);
-        }
     }
+
+    Ok(())
 }

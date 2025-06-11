@@ -11,7 +11,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 #include "iox2/service_builder_event.hpp"
-#include "iox/assertions_addendum.hpp"
 
 namespace iox2 {
 template <ServiceType S>
@@ -45,8 +44,20 @@ void ServiceBuilderEvent<S>::set_parameters() {
             .or_else([&]() { iox2_service_builder_event_disable_notifier_dead_event(&m_handle); });
     }
 
-    m_max_nodes.and_then([](auto) { IOX_TODO(); });
-    m_event_id_max_value.and_then([](auto) { IOX_TODO(); });
+    if (m_verify_deadline) {
+        m_deadline
+            .and_then([&](auto value) {
+                iox2_service_builder_event_set_deadline(
+                    &m_handle,
+                    value.toSeconds(),
+                    value.toNanoseconds() - (value.toSeconds() * iox::units::Duration::NANOSECS_PER_SEC));
+            })
+            .or_else([&]() { iox2_service_builder_event_disable_deadline(&m_handle); });
+    }
+
+    m_max_nodes.and_then([&](auto value) { iox2_service_builder_event_set_max_nodes(&m_handle, value); });
+    m_event_id_max_value.and_then(
+        [&](auto value) { iox2_service_builder_event_set_event_id_max_value(&m_handle, value); });
 }
 
 template <ServiceType S>
@@ -70,6 +81,14 @@ auto ServiceBuilderEvent<S>::notifier_dead_event(EventId event_id) && -> Service
     return std::move(*this);
 }
 
+
+template <ServiceType S>
+auto ServiceBuilderEvent<S>::deadline(iox::units::Duration deadline) && -> ServiceBuilderEvent&& {
+    m_deadline.emplace(deadline);
+    m_verify_deadline = true;
+    return std::move(*this);
+}
+
 template <ServiceType S>
 auto ServiceBuilderEvent<S>::disable_notifier_dropped_event() && -> ServiceBuilderEvent&& {
     m_notifier_dropped_event.reset();
@@ -88,6 +107,13 @@ template <ServiceType S>
 auto ServiceBuilderEvent<S>::disable_notifier_dead_event() && -> ServiceBuilderEvent&& {
     m_notifier_dead_event.reset();
     m_verify_notifier_dead_event = true;
+    return std::move(*this);
+}
+
+template <ServiceType S>
+auto ServiceBuilderEvent<S>::disable_deadline() && -> ServiceBuilderEvent&& {
+    m_deadline.reset();
+    m_verify_deadline = true;
     return std::move(*this);
 }
 

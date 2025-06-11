@@ -20,17 +20,26 @@
 
 # iceoryx2 - Zero-Copy Lock-Free IPC Purely Written In Rust
 
-1. [Introduction](#introduction)
-2. [Documentation](#documentation)
-3. [Performance](#performance)
-4. [Getting Started](#getting-started)
-   1. [Publish Subscribe](#publish-subscribe)
-   2. [Events](#events)
-   3. [Custom Configuration](#custom-configuration)
-5. [Supported Platforms](#supported-platforms)
-6. [Language Bindings](#language-bindings)
-7. [Commercial Support](#commercial-support)
-8. [Thanks To All Contributors](#thanks-to-all-contributors)
+* [iceoryx2 - Zero-Copy Lock-Free IPC Purely Written In Rust](#iceoryx2---zero-copy-lock-free-ipc-purely-written-in-rust)
+    * [Introduction](#introduction)
+    * [Documentation](#documentation)
+    * [Performance](#performance)
+        * [Comparision Of Mechanisms](#comparision-of-mechanisms)
+            * [Benchmark-System](#benchmark-system)
+        * [Comparision Of Architectures](#comparision-of-architectures)
+    * [Getting Started](#getting-started)
+        * [Publish Subscribe](#publish-subscribe)
+            * [publisher.rs](#publisherrs)
+            * [subscriber.rs](#subscriberrs)
+        * [Events](#events)
+            * [notifier.rs](#notifierrs)
+            * [listener.rs](#listenerrs)
+            * [listener.rs (grabbing all events at once)](#listenerrs-grabbing-all-events-at-once)
+        * [Custom Configuration](#custom-configuration)
+    * [Supported Platforms](#supported-platforms)
+    * [Language Bindings](#language-bindings)
+    * [Commercial Support](#commercial-support)
+    * [Thanks To All Contributors](#thanks-to-all-contributors)
 
 ## Introduction
 
@@ -41,8 +50,8 @@ reliable zero-copy and lock-free inter-process communication mechanisms.
 So if you want to communicate efficiently between multiple processes or
 applications iceoryx2 is for you. With iceoryx2, you can:
 
-* Send huge amounts of data using a publish/subscribe, request/response
-  (planned), pipeline (planned) or blackboard pattern (planned), making it ideal
+* Send huge amounts of data using a publish/subscribe, request/response,
+  pipeline (planned) or blackboard pattern (planned), making it ideal
   for scenarios where large datasets need to be shared.
 * Exchange signals through events, enabling quick and reliable signaling between
   processes.
@@ -174,6 +183,97 @@ cargo run --example publish_subscribe_publisher
 
 ```sh
 cargo run --example publish_subscribe_subscriber
+```
+
+### Request Response
+
+This example showcases a client sending a request with the number 123 every
+second, while a server responds with the number 456 as soon as it receives
+the request.
+
+#### client.rs
+
+```rust
+use core::time::Duration;
+use iceoryx2::prelude::*;
+
+const CYCLE_TIME: Duration = Duration::from_secs(1);
+
+fn main() -> Result<(), Box<dyn core::error::Error>> {
+    let node = NodeBuilder::new().create::<ipc::Service>()?;
+
+    let service = node
+        .service_builder(&"My/Funk/ServiceName".try_into()?)
+        .request_response::<u64, u64>()
+        .open_or_create()?;
+
+    let client = service.client_builder().create()?;
+
+    // send first request
+    let request = client.loan_uninit()?;
+    let request = request.write_payload(1234);
+    let mut pending_response = request.send()?;
+
+    while node.wait(CYCLE_TIME).is_ok() {
+        // acquire all responses to our request from our buffer that were sent by the servers
+        while let Some(response) = pending_response.receive()? {
+            println!("  received response: {:?}", *response);
+        }
+
+        // send another request
+        let request = client.loan_uninit()?;
+        let request = request.write_payload(123);
+        pending_response = request.send()?;
+   }
+
+    Ok(())
+}
+```
+
+#### server.rs
+
+```rust
+use core::time::Duration;
+use iceoryx2::prelude::*;
+
+const CYCLE_TIME: Duration = Duration::from_millis(100);
+
+fn main() -> Result<(), Box<dyn core::error::Error>> {
+    let node = NodeBuilder::new().create::<ipc::Service>()?;
+
+    let service = node
+        .service_builder(&"My/Funk/ServiceName".try_into()?)
+        .request_response::<u64, u64>()
+        .open_or_create()?;
+
+    let server = service.server_builder().create()?;
+
+    while node.wait(CYCLE_TIME).is_ok() {
+        while let Some(active_request) = server.receive()? {
+            let response = active_request.loan_uninit()?;
+            let response = response.write_payload(456);
+            response.send()?;
+        }
+    }
+
+    Ok(())
+}
+```
+
+This example is a simplified version of the
+[request response example](examples/rust/request_response/). You can execute it
+by opening two terminals and calling:
+
+**Terminal 1:**
+
+```sh
+cargo run --example request_response_client
+```
+
+**Terminal 2:**
+
+```sh
+cargo run --example request_response_server
 ```
 
 ### Events
@@ -316,13 +416,13 @@ The support levels can be adjusted when required.
 
 | Language |   State |
 | -------- | ------: |
-| C / C++  |    beta |
-| C#       | planned |
+| C / C++  |    done |
+| Python   | planned |
 | Go       | planned |
+| C#       | planned |
 | Java     | planned |
 | Kotlin   | planned |
 | Lua      | planned |
-| Python   | planned |
 | Swift    | planned |
 | Zig      | planned |
 
@@ -358,31 +458,10 @@ The support levels can be adjusted when required.
 
 ## Thanks To All Contributors
 
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
-
-<table>
-  <tbody>
-    <tr>
-      <td align="center" valign="top" width="14.28%">
-          <a href="https://github.com/elfenpiff">
-          <img src="https://avatars.githubusercontent.com/u/56729169" width="120px;" alt="Christian »elfenpiff« Eltzschig"/><br />
-          <sub><b>Christian »elfenpiff« Eltzschig</b></sub></a></td>
-      <td align="center" valign="top" width="14.28%">
-          <a href="https://github.com/elboberido">
-          <img src="https://avatars.githubusercontent.com/u/56729607" width="120px;" alt="Mathias »elBoberido« Kraus"/><br />
-          <sub><b>Mathias »elBoberido« Kraus</b></sub></a></td>
-      <td align="center" valign="top" width="14.28%">
-          <a href="https://github.com/orecham">
-          <img src="https://avatars.githubusercontent.com/u/8487595" width="120px;" alt="»orecham«"/><br />
-          <sub><b>»orecham«</b></sub></a></td>
-      <td align="center" valign="top" width="14.28%">
-          <a href="https://github.com/xieyuschen">
-          <img src="https://avatars.githubusercontent.com/u/52945328" width="120px;" alt="xieyuschen"/><br />
-          <sub><b>»xieyuschen«</b></sub></a></td>                   
-    </tr>
-  </tbody>
-</table>
-
-<!-- markdownlint-restore -->
-<!-- prettier-ignore-end -->
+Thanks to everyone who has contributed to iceoryx2. Without their passion and
+dedication, the project wouldn't thrive. A list of people who have committed
+code can be found on [github](https://github.com/eclipse-iceoryx/iceoryx2/graphs/contributors).
+However, contributions are not limited to code - testing the software, reporting
+bugs, and spreading the word about iceoryx2 are all equally valuable. A big
+thank you as well to those 'invisible' contributors who play a crucial role
+behind the scenes.

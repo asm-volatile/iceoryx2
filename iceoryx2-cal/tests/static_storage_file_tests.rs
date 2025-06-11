@@ -10,6 +10,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use core::time::Duration;
 use iceoryx2_bb_container::semantic_string::*;
 use iceoryx2_bb_posix::config::*;
 use iceoryx2_bb_posix::directory::Directory;
@@ -19,7 +20,6 @@ use iceoryx2_bb_system_types::file_path::FilePath;
 use iceoryx2_bb_testing::assert_that;
 use iceoryx2_cal::static_storage::file::*;
 use iceoryx2_cal::testing::*;
-use std::time::Duration;
 
 #[test]
 fn static_storage_file_custom_suffix_works() {
@@ -56,10 +56,11 @@ fn static_storage_file_path_is_created_when_it_does_not_exist() {
     let storage_name = generate_name();
     let config = generate_isolated_config::<Storage>();
     let content = "some more funky content".to_string();
-    let non_existing_path =
-        FilePath::from_path_and_file(&test_directory(), &generate_name()).unwrap();
+    let non_existing_path = FilePath::from_path_and_file(&test_directory(), &generate_name())
+        .unwrap()
+        .clone();
 
-    Directory::remove(&non_existing_path.into()).ok();
+    Directory::remove(&non_existing_path.clone().into()).ok();
     let config = config.path_hint(&non_existing_path.into());
 
     let storage_guard = Builder::new(&storage_name)

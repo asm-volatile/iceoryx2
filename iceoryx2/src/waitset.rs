@@ -46,7 +46,7 @@
 //! ```no_run
 //! use iceoryx2::prelude::*;
 //! # use core::time::Duration;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! # let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! # let event = node.service_builder(&"MyEventName_1".try_into()?)
 //! #     .event()
@@ -77,7 +77,7 @@
 //! ```no_run
 //! use iceoryx2::prelude::*;
 //! # use core::time::Duration;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! # let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! # let event = node.service_builder(&"MyEventName_1".try_into()?)
 //! #     .event()
@@ -111,7 +111,7 @@
 //! ```no_run
 //! use iceoryx2::prelude::*;
 //! # use core::time::Duration;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! # let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! # let pubsub = node.service_builder(&"MyServiceName".try_into()?)
 //! #     .publish_subscribe::<u64>()
@@ -149,7 +149,7 @@
 //! use std::collections::HashMap;
 //! use iceoryx2::port::listener::Listener;
 //! # use core::time::Duration;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! # let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! # let event_1 = node.service_builder(&"MyEventName_1".try_into()?)
 //! #     .event()
@@ -197,7 +197,7 @@
 //! ```no_run
 //! use iceoryx2::prelude::*;
 //! # use core::time::Duration;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //!
 //! let waitset = WaitSetBuilder::new()
 //!                 .signal_handling_mode(SignalHandlingMode::Disabled)
@@ -213,10 +213,11 @@
 //! # Ok(())
 //! # }
 
-use std::{
-    cell::RefCell, collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData,
-    sync::atomic::Ordering, time::Duration,
+use core::{
+    cell::RefCell, fmt::Debug, hash::Hash, marker::PhantomData, sync::atomic::Ordering,
+    time::Duration,
 };
+use std::collections::HashMap;
 
 use iceoryx2_bb_elementary::CallbackProgression;
 use iceoryx2_bb_log::fail;
@@ -256,13 +257,13 @@ pub enum WaitSetAttachmentError {
     InternalError,
 }
 
-impl std::fmt::Display for WaitSetAttachmentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for WaitSetAttachmentError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "WaitSetAttachmentError::{:?}", self)
     }
 }
 
-impl std::error::Error for WaitSetAttachmentError {}
+impl core::error::Error for WaitSetAttachmentError {}
 
 /// Defines the failures that can occur when calling [`WaitSet::wait_and_process()`].
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -275,13 +276,13 @@ pub enum WaitSetRunError {
     NoAttachments,
 }
 
-impl std::fmt::Display for WaitSetRunError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for WaitSetRunError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "WaitSetRunError::{:?}", self)
     }
 }
 
-impl std::error::Error for WaitSetRunError {}
+impl core::error::Error for WaitSetRunError {}
 
 /// Defines the failures that can occur when calling [`WaitSetBuilder::create()`].
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -290,13 +291,13 @@ pub enum WaitSetCreateError {
     InternalError,
 }
 
-impl std::fmt::Display for WaitSetCreateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for WaitSetCreateError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "WaitSetCreateError::{:?}", self)
     }
 }
 
-impl std::error::Error for WaitSetCreateError {}
+impl core::error::Error for WaitSetCreateError {}
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, PartialOrd, Ord)]
 enum AttachmentIdType {
@@ -313,7 +314,7 @@ pub struct WaitSetAttachmentId<Service: crate::service::Service> {
 }
 
 impl<Service: crate::service::Service> Debug for WaitSetAttachmentId<Service> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
             "WaitSetAttachmentId<{}> {{ attachment_type: {:?} }}",
@@ -345,13 +346,13 @@ impl<Service: crate::service::Service> WaitSetAttachmentId<Service> {
 }
 
 impl<Service: crate::service::Service> PartialOrd for WaitSetAttachmentId<Service> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl<Service: crate::service::Service> Ord for WaitSetAttachmentId<Service> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.attachment_type.cmp(&other.attachment_type)
     }
 }
@@ -365,7 +366,7 @@ impl<Service: crate::service::Service> PartialEq for WaitSetAttachmentId<Service
 impl<Service: crate::service::Service> Eq for WaitSetAttachmentId<Service> {}
 
 impl<Service: crate::service::Service> Hash for WaitSetAttachmentId<Service> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.attachment_type.hash(state)
     }
 }
@@ -715,7 +716,7 @@ impl<Service: crate::service::Service> WaitSet<Service> {
     /// ```no_run
     /// use iceoryx2::prelude::*;
     /// # use core::time::Duration;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// # let event = node.service_builder(&"MyEventName_1".try_into()?)
     /// #     .event()
@@ -780,7 +781,7 @@ impl<Service: crate::service::Service> WaitSet<Service> {
     /// ```no_run
     /// use iceoryx2::prelude::*;
     /// # use core::time::Duration;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// # let event = node.service_builder(&"MyEventName_1".try_into()?)
     /// #     .event()
@@ -834,7 +835,7 @@ impl<Service: crate::service::Service> WaitSet<Service> {
     /// ```no_run
     /// use iceoryx2::prelude::*;
     /// # use core::time::Duration;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// # let event = node.service_builder(&"MyEventName_1".try_into()?)
     /// #     .event()
@@ -896,8 +897,7 @@ impl<Service: crate::service::Service> WaitSet<Service> {
         // Collect all triggered file descriptors. We need to collect them first, then reset
         // the deadline and then call the callback, otherwise a long callback may destroy the
         // deadline contract.
-        let reactor_wait_result = if self.deadline_queue.is_empty() || next_timeout == Duration::MAX
-        {
+        let reactor_wait_result = if next_timeout == Duration::MAX {
             self.reactor.blocking_wait(collect_triggered_fds)
         } else {
             self.reactor.timed_wait(collect_triggered_fds, next_timeout)

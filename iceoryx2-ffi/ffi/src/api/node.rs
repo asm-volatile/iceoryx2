@@ -30,8 +30,10 @@ use iceoryx2_ffi_macros::CStrRepr;
 
 use core::ffi::{c_char, c_int};
 use core::mem::ManuallyDrop;
-use std::ffi::CString;
-use std::time::Duration;
+use core::time::Duration;
+
+extern crate alloc;
+use alloc::ffi::CString;
 
 use super::{iox2_config_h_ref, iox2_node_id_h_ref, iox2_node_id_ptr, iox2_signal_handling_mode_e};
 
@@ -88,6 +90,8 @@ pub enum iox2_node_cleanup_failure_e {
     INTERNAL_ERROR,
     /// The stale resources of a dead node could not be removed since the process does not have sufficient permissions.
     INSUFFICIENT_PERMISSIONS,
+    /// Trying to cleanup resources from a dead node which was using a different iceoryx2 version.
+    VERSION_MISMATCH,
 }
 
 impl IntoCInt for NodeCleanupFailure {
@@ -98,6 +102,7 @@ impl IntoCInt for NodeCleanupFailure {
             NodeCleanupFailure::InsufficientPermissions => {
                 iox2_node_cleanup_failure_e::INSUFFICIENT_PERMISSIONS
             }
+            NodeCleanupFailure::VersionMismatch => iox2_node_cleanup_failure_e::VERSION_MISMATCH,
         }) as c_int
     }
 }
@@ -405,7 +410,7 @@ pub unsafe extern "C" fn iox2_dead_node_remove_stale_resources(
     }
 }
 
-fn iox2_node_list_impl<S: Service>(
+pub(crate) fn iox2_node_list_impl<S: Service>(
     node_state: &NodeState<S>,
     callback: iox2_node_list_callback,
     callback_ctx: iox2_callback_context,
@@ -423,7 +428,7 @@ fn iox2_node_list_impl<S: Service>(
                         view.config() as _,
                     )
                 })
-                .unwrap_or((unknown_executable, std::ptr::null(), std::ptr::null()));
+                .unwrap_or((unknown_executable, core::ptr::null(), core::ptr::null()));
             callback(
                 iox2_node_state_e::ALIVE,
                 alive_node_view.id(),
@@ -445,7 +450,7 @@ fn iox2_node_list_impl<S: Service>(
                         view.config() as _,
                     )
                 })
-                .unwrap_or((unknown_executable, std::ptr::null(), std::ptr::null()));
+                .unwrap_or((unknown_executable, core::ptr::null(), core::ptr::null()));
             callback(
                 iox2_node_state_e::DEAD,
                 dead_node_view.id(),
@@ -460,8 +465,8 @@ fn iox2_node_list_impl<S: Service>(
             iox2_node_state_e::INACCESSIBLE,
             node_id,
             unknown_executable.as_bytes_with_nul().as_ptr().cast(),
-            std::ptr::null(),
-            std::ptr::null(),
+            core::ptr::null(),
+            core::ptr::null(),
             callback_ctx,
         )
         .into(),
@@ -469,8 +474,8 @@ fn iox2_node_list_impl<S: Service>(
             iox2_node_state_e::UNDEFINED,
             node_id,
             unknown_executable.as_bytes_with_nul().as_ptr().cast(),
-            std::ptr::null(),
-            std::ptr::null(),
+            core::ptr::null(),
+            core::ptr::null(),
             callback_ctx,
         )
         .into(),

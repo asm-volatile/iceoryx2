@@ -43,16 +43,8 @@ class Subscriber {
     auto buffer_size() const -> uint64_t;
 
     /// Receives a [`Sample`] from [`Publisher`]. If no sample could be
-    /// received [`None`] is returned. If a failure occurs [`SubscriberReceiveError`] is returned.
-    auto receive() const -> iox::expected<iox::optional<Sample<S, Payload, UserHeader>>, SubscriberReceiveError>;
-
-    /// Explicitly updates all connections to the [`Subscriber`]s. This is
-    /// required to be called whenever a new [`Subscriber`] connected to
-    /// the service. It is done implicitly whenever [`SampleMut::send()`] or
-    /// [`Publisher::send_copy()`] is called.
-    /// When a [`Subscriber`] is connected that requires a history this
-    /// call will deliver it.
-    auto update_connections() const -> iox::expected<void, ConnectionFailure>;
+    /// received [`None`] is returned. If a failure occurs [`ReceiveError`] is returned.
+    auto receive() const -> iox::expected<iox::optional<Sample<S, Payload, UserHeader>>, ReceiveError>;
 
     /// Returns true when the [`Subscriber`] has [`Sample`]s that can be
     /// acquired via [`Subscriber::receive()`], otherwise false.
@@ -123,12 +115,12 @@ inline auto Subscriber<S, Payload, UserHeader>::id() const -> UniqueSubscriberId
 
 template <ServiceType S, typename Payload, typename UserHeader>
 inline auto Subscriber<S, Payload, UserHeader>::buffer_size() const -> uint64_t {
-    IOX_TODO();
+    return iox2_subscriber_buffer_size(&m_handle);
 }
 
 template <ServiceType S, typename Payload, typename UserHeader>
 inline auto Subscriber<S, Payload, UserHeader>::receive() const
-    -> iox::expected<iox::optional<Sample<S, Payload, UserHeader>>, SubscriberReceiveError> {
+    -> iox::expected<iox::optional<Sample<S, Payload, UserHeader>>, ReceiveError> {
     Sample<S, Payload, UserHeader> sample;
     auto result = iox2_subscriber_receive(&m_handle, &sample.m_sample, &sample.m_handle);
 
@@ -139,19 +131,8 @@ inline auto Subscriber<S, Payload, UserHeader>::receive() const
         return iox::ok(iox::optional<Sample<S, Payload, UserHeader>>(iox::nullopt));
     }
 
-    return iox::err(iox::into<SubscriberReceiveError>(result));
+    return iox::err(iox::into<ReceiveError>(result));
 }
-
-template <ServiceType S, typename Payload, typename UserHeader>
-inline auto Subscriber<S, Payload, UserHeader>::update_connections() const -> iox::expected<void, ConnectionFailure> {
-    auto result = iox2_subscriber_update_connections(&m_handle);
-    if (result != IOX2_OK) {
-        return iox::err(iox::into<ConnectionFailure>(result));
-    }
-
-    return iox::ok();
-}
-
 } // namespace iox2
 
 #endif

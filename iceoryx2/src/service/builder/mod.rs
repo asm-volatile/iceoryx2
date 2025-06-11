@@ -20,12 +20,19 @@ pub mod event;
 /// Builder for [`MessagingPattern::PublishSubscribe`](crate::service::messaging_pattern::MessagingPattern::PublishSubscribe)
 pub mod publish_subscribe;
 
+/// Builder for [`MessagingPattern::RequestResponse`](crate::service::messaging_pattern::MessagingPattern::RequestResponse)
+pub mod request_response;
+
 use crate::node::SharedNode;
 use crate::service;
 use crate::service::dynamic_config::DynamicConfig;
 use crate::service::dynamic_config::RegisterNodeResult;
 use crate::service::static_config::*;
+use core::fmt::Debug;
+use core::marker::PhantomData;
+use iceoryx2_bb_derive_macros::ZeroCopySend;
 use iceoryx2_bb_elementary::enum_gen;
+use iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend;
 use iceoryx2_bb_log::fail;
 use iceoryx2_bb_log::fatal_panic;
 use iceoryx2_bb_memory::bump_allocator::BumpAllocator;
@@ -37,15 +44,17 @@ use iceoryx2_cal::named_concept::NamedConceptDoesExistError;
 use iceoryx2_cal::named_concept::NamedConceptMgmt;
 use iceoryx2_cal::serialize::Serialize;
 use iceoryx2_cal::static_storage::*;
-use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::sync::Arc;
+
+extern crate alloc;
+use alloc::sync::Arc;
 
 use super::config_scheme::dynamic_config_storage_config;
 use super::config_scheme::service_tag_config;
 use super::config_scheme::static_config_storage_config;
 use super::service_name::ServiceName;
 use super::Service;
+
+const RETRY_LIMIT: usize = 5;
 
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 enum ServiceState {
@@ -54,6 +63,16 @@ enum ServiceState {
     HangsInCreation,
     Corrupted,
 }
+
+#[repr(C)]
+#[derive(Debug, ZeroCopySend)]
+#[doc(hidden)]
+pub struct CustomHeaderMarker {}
+
+#[repr(C)]
+#[derive(Debug, ZeroCopySend)]
+#[doc(hidden)]
+pub struct CustomPayloadMarker(u8);
 
 enum_gen! {
 #[doc(hidden)]
@@ -65,13 +84,13 @@ enum_gen! {
     DynamicStorageOpenError
 }
 
-impl std::fmt::Display for OpenDynamicStorageFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for OpenDynamicStorageFailure {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "OpenDynamicStorageFailure::{:?}", self)
     }
 }
 
-impl std::error::Error for OpenDynamicStorageFailure {}
+impl core::error::Error for OpenDynamicStorageFailure {}
 
 enum_gen! {
 #[doc(hidden)]
@@ -81,13 +100,13 @@ enum_gen! {
     StaticStorageReadError
 }
 
-impl std::fmt::Display for ReadStaticStorageFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for ReadStaticStorageFailure {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "ReadStaticStorageFailure::{:?}", self)
     }
 }
 
-impl std::error::Error for ReadStaticStorageFailure {}
+impl core::error::Error for ReadStaticStorageFailure {}
 
 /// Builder to create or open [`Service`]s
 ///
@@ -111,8 +130,26 @@ impl<S: Service> Builder<S> {
     }
 
     /// Create a new builder to create a
+    /// [`MessagingPattern::RequestResponse`](crate::service::messaging_pattern::MessagingPattern::RequestResponse) [`Service`].
+    pub fn request_response<
+        RequestPayload: Debug + ZeroCopySend + ?Sized,
+        ResponsePayload: Debug + ZeroCopySend + ?Sized,
+    >(
+        self,
+    ) -> request_response::Builder<RequestPayload, (), ResponsePayload, (), S> {
+        BuilderWithServiceType::new(
+            StaticConfig::new_request_response::<S::ServiceNameHasher>(
+                &self.name,
+                self.shared_node.config(),
+            ),
+            self.shared_node,
+        )
+        .request_response::<RequestPayload, ResponsePayload>()
+    }
+
+    /// Create a new builder to create a
     /// [`MessagingPattern::PublishSubscribe`](crate::service::messaging_pattern::MessagingPattern::PublishSubscribe) [`Service`].
-    pub fn publish_subscribe<PayloadType: Debug + ?Sized>(
+    pub fn publish_subscribe<PayloadType: Debug + ?Sized + ZeroCopySend>(
         self,
     ) -> publish_subscribe::Builder<PayloadType, (), S> {
         BuilderWithServiceType::new(
@@ -153,7 +190,16 @@ impl<ServiceType: service::Service> BuilderWithServiceType<ServiceType> {
         }
     }
 
-    fn publish_subscribe<PayloadType: Debug + ?Sized>(
+    fn request_response<
+        RequestPayload: Debug + ZeroCopySend + ?Sized,
+        ResponsePayload: Debug + ZeroCopySend + ?Sized,
+    >(
+        self,
+    ) -> request_response::Builder<RequestPayload, (), ResponsePayload, (), ServiceType> {
+        request_response::Builder::new(self)
+    }
+
+    fn publish_subscribe<PayloadType: Debug + ?Sized + ZeroCopySend>(
         self,
     ) -> publish_subscribe::Builder<PayloadType, (), ServiceType> {
         publish_subscribe::Builder::new(self)
@@ -169,7 +215,7 @@ impl<ServiceType: service::Service> BuilderWithServiceType<ServiceType> {
     ) -> Result<Option<(StaticConfig, ServiceType::StaticStorage)>, ServiceState> {
         let static_storage_config =
             static_config_storage_config::<ServiceType>(self.shared_node.config());
-        let file_name_uuid = self.service_config.service_id().0.into();
+        let file_name_uuid = self.service_config.service_id().0.clone().into();
         let creation_timeout = self.shared_node.config().global.service.creation_timeout;
 
         match <ServiceType::StaticStorage as NamedConceptMgmt>::does_exist_cfg(
@@ -251,7 +297,7 @@ impl<ServiceType: service::Service> BuilderWithServiceType<ServiceType> {
             DynamicConfig,
         >>::Builder<'_> as NamedConceptBuilder<
             ServiceType::DynamicStorage,
-        >>::new(&self.service_config.service_id().0.into())
+        >>::new(&self.service_config.service_id().0.clone().into())
             .config(&dynamic_config_storage_config::<ServiceType>(self.shared_node.config()))
             .supplementary_size(additional_size + required_memory_size)
             .has_ownership(false)
@@ -280,7 +326,7 @@ impl<ServiceType: service::Service> BuilderWithServiceType<ServiceType> {
                     DynamicConfig,
                 >>::Builder<'_> as NamedConceptBuilder<
                     ServiceType::DynamicStorage,
-                >>::new(&self.service_config.service_id().0.into())
+                >>::new(&self.service_config.service_id().0.clone().into())
                     .timeout(self.shared_node.config().global.service.creation_timeout)
                     .config(&dynamic_config_storage_config::<ServiceType>(self.shared_node.config()))
                 .has_ownership(false)
@@ -314,7 +360,7 @@ impl<ServiceType: service::Service> BuilderWithServiceType<ServiceType> {
     ) -> Result<Option<ServiceType::StaticStorage>, ErrorType> {
         match <<ServiceType::StaticStorage as StaticStorage>::Builder as NamedConceptBuilder<
             ServiceType::StaticStorage,
-        >>::new(&self.service_config.service_id().0.into())
+        >>::new(&self.service_config.service_id().0.clone().into())
         .config(&service_tag_config::<ServiceType>(
             self.shared_node.config(),
             self.shared_node.id(),
@@ -338,7 +384,7 @@ impl<ServiceType: service::Service> BuilderWithServiceType<ServiceType> {
         Ok(
             fail!(from self, when <<ServiceType::StaticStorage as StaticStorage>::Builder as NamedConceptBuilder<
                         ServiceType::StaticStorage,
-                    >>::new(&self.service_config.service_id().0.into())
+                    >>::new(&self.service_config.service_id().0.clone().into())
                     .config(&static_config_storage_config::<ServiceType>(
                         self.shared_node.config(),
                     ))

@@ -10,7 +10,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::mem::MaybeUninit;
+use core::mem::MaybeUninit;
 
 use clap::Parser;
 use iceoryx2::prelude::*;
@@ -21,7 +21,7 @@ use iceoryx2_bb_posix::thread::ThreadBuilder;
 
 const ITERATIONS: u64 = 10000000;
 
-fn perform_benchmark<T: Service>(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
+fn perform_benchmark<T: Service>(args: &Args) -> Result<(), Box<dyn core::error::Error>> {
     let service_name_a2b = ServiceName::new("a2b")?;
     let service_name_b2a = ServiceName::new("b2a")?;
     let node = NodeBuilder::new().create::<T>()?;
@@ -29,8 +29,8 @@ fn perform_benchmark<T: Service>(args: &Args) -> Result<(), Box<dyn std::error::
     let service_a2b = node
         .service_builder(&service_name_a2b)
         .publish_subscribe::<[u8]>()
-        .max_publishers(1)
-        .max_subscribers(1)
+        .max_publishers(1 + args.number_of_additional_publishers)
+        .max_subscribers(1 + args.number_of_additional_subscribers)
         .history_size(0)
         .subscriber_max_buffer_size(1)
         .enable_safe_overflow(true)
@@ -39,12 +39,25 @@ fn perform_benchmark<T: Service>(args: &Args) -> Result<(), Box<dyn std::error::
     let service_b2a = node
         .service_builder(&service_name_b2a)
         .publish_subscribe::<[u8]>()
-        .max_publishers(1)
-        .max_subscribers(1)
+        .max_publishers(1 + args.number_of_additional_publishers)
+        .max_subscribers(1 + args.number_of_additional_subscribers)
         .history_size(0)
         .subscriber_max_buffer_size(1)
         .enable_safe_overflow(true)
         .create()?;
+
+    let mut additional_publishers = Vec::new();
+    let mut additional_subscribers = Vec::new();
+
+    for _ in 0..args.number_of_additional_publishers {
+        additional_publishers.push(service_a2b.publisher_builder().create()?);
+        additional_publishers.push(service_b2a.publisher_builder().create()?);
+    }
+
+    for _ in 0..args.number_of_additional_subscribers {
+        additional_subscribers.push(service_a2b.subscriber_builder().create()?);
+        additional_subscribers.push(service_b2a.subscriber_builder().create()?);
+    }
 
     let start_benchmark_barrier_handle = BarrierHandle::new();
     let startup_barrier_handle = BarrierHandle::new();
@@ -138,7 +151,7 @@ fn perform_benchmark<T: Service>(args: &Args) -> Result<(), Box<dyn std::error::
     let stop = start.elapsed().expect("failed to measure time");
     println!(
         "{} ::: Iterations: {}, Time: {} s, Latency: {} ns, Sample Size: {}",
-        std::any::type_name::<T>(),
+        core::any::type_name::<T>(),
         args.iterations,
         stop.as_secs_f64(),
         stop.as_nanos() / (args.iterations as u128 * 2),
@@ -175,17 +188,25 @@ struct Args {
     /// The size in bytes of the payload that shall be used
     #[clap(short, long, default_value_t = 8192)]
     payload_size: usize,
+    /// Send a copy of the payload instead of performing true zero-copy. Can provide an hint on
+    /// how expensive serialization can be.
     #[clap(long)]
     send_copy: bool,
+    /// The number of additional publishers per service in the setup.
+    #[clap(long, default_value_t = 0)]
+    number_of_additional_publishers: usize,
+    /// The number of additional subscribers per service in the setup.
+    #[clap(long, default_value_t = 0)]
+    number_of_additional_subscribers: usize,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn core::error::Error>> {
     let args = Args::parse();
 
     if args.debug_mode {
         set_log_level(iceoryx2_bb_log::LogLevel::Trace);
     } else {
-        set_log_level(iceoryx2_bb_log::LogLevel::Info);
+        set_log_level(iceoryx2_bb_log::LogLevel::Error);
     }
 
     let mut at_least_one_benchmark_did_run = false;

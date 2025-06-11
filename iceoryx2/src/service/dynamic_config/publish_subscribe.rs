@@ -15,7 +15,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! let pubsub = node.service_builder(&"My/Funk/ServiceName".try_into()?)
 //!     .publish_subscribe::<u64>()
@@ -48,26 +48,46 @@ pub(crate) struct DynamicConfigSettings {
     pub number_of_publishers: usize,
 }
 
+/// Contains the communication settings of the connected
+/// [`Publisher`](crate::port::publisher::Publisher).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct PublisherDetails {
-    pub(crate) publisher_id: UniquePublisherId,
-    pub(crate) node_id: NodeId,
-    pub(crate) number_of_samples: usize,
-    pub(crate) max_slice_len: usize,
-    pub(crate) data_segment_type: DataSegmentType,
-    pub(crate) max_number_of_segments: u8,
+pub struct PublisherDetails {
+    /// The [`UniquePublisherId`] of the [`Publisher`](crate::port::publisher::Publisher).
+    pub publisher_id: UniquePublisherId,
+    /// The [`NodeId`] of the [`Node`](crate::node::Node) under which the
+    /// [`Publisher`](crate::port::publisher::Publisher) was created.
+    pub node_id: NodeId,
+    /// The total number of samples contained in the
+    /// [`Publisher`](crate::port::publisher::Publisher)s data segment.
+    pub number_of_samples: usize,
+    /// The current maximum length of a slice.
+    pub max_slice_len: usize,
+    /// The type of data segment the [`Publisher`](crate::port::publisher::Publisher)
+    /// has.
+    pub data_segment_type: DataSegmentType,
+    /// If the [`Publisher`](crate::port::publisher::Publisher) has the
+    /// [`DataSegmentType::Dynamic`] it defines how many segment the
+    /// [`Publisher`](crate::port::publisher::Publisher) can have at most.
+    pub max_number_of_segments: u8,
 }
 
+/// Contains the communication settings of the connected
+/// [`Subscriber`](crate::port::subscriber::Subscriber).
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct SubscriberDetails {
-    pub(crate) subscriber_id: UniqueSubscriberId,
-    pub(crate) node_id: NodeId,
-    pub(crate) buffer_size: usize,
+pub struct SubscriberDetails {
+    /// The [`UniqueSubscriberId`] of the [`Subscriber`](crate::port::subscriber::Subscriber).
+    pub subscriber_id: UniqueSubscriberId,
+    /// The [`NodeId`] of the [`Node`](crate::node::Node) under which the
+    /// [`Subscriber`](crate::port::subscriber::Subscriber) was created.
+    pub node_id: NodeId,
+    /// The size of the receive buffer that stores [`Sample`](crate::sample::Sample).
+    pub buffer_size: usize,
 }
 
-/// The dynamic configuration of an [`crate::service::messaging_pattern::MessagingPattern::Event`]
+/// The dynamic configuration of an
+/// [`crate::service::messaging_pattern::MessagingPattern::PublishSubscribe`]
 /// based service. Contains dynamic parameters like the connected endpoints etc..
 #[repr(C)]
 #[derive(Debug)]
@@ -142,24 +162,30 @@ impl DynamicConfig {
         self.subscribers.len()
     }
 
-    #[doc(hidden)]
-    pub fn __internal_subscriber_owners<F: FnMut(&NodeId)>(&self, mut callback: F) {
+    /// Iterates over all [`Subscriber`](crate::port::subscriber::Subscriber)s and calls the
+    /// callback with the corresponding [`SubscriberDetails`].
+    /// The callback shall return [`CallbackProgression::Continue`] when the iteration shall
+    /// continue otherwise [`CallbackProgression::Stop`].
+    pub fn list_subscribers<F: FnMut(&SubscriberDetails) -> CallbackProgression>(
+        &self,
+        mut callback: F,
+    ) {
         let state = unsafe { self.subscribers.get_state() };
 
-        state.for_each(|_, details| {
-            callback(&details.node_id);
-            CallbackProgression::Continue
-        });
+        state.for_each(|_, details| callback(details));
     }
 
-    #[doc(hidden)]
-    pub fn __internal_publisher_owners<F: FnMut(&NodeId)>(&self, mut callback: F) {
+    /// Iterates over all [`Publisher`](crate::port::publisher::Publisher)s and calls the
+    /// callback with the corresponding [`PublisherDetails`].
+    /// The callback shall return [`CallbackProgression::Continue`] when the iteration shall
+    /// continue otherwise [`CallbackProgression::Stop`].
+    pub fn list_publishers<F: FnMut(&PublisherDetails) -> CallbackProgression>(
+        &self,
+        mut callback: F,
+    ) {
         let state = unsafe { self.publishers.get_state() };
 
-        state.for_each(|_, details| {
-            callback(&details.node_id);
-            CallbackProgression::Continue
-        });
+        state.for_each(|_, details| callback(details));
     }
 
     pub(crate) fn add_subscriber_id(&self, details: SubscriberDetails) -> Option<ContainerHandle> {

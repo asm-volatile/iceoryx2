@@ -17,6 +17,7 @@
 #include "iox/into.hpp"
 #include "iox2/allocation_strategy.hpp"
 #include "iox2/callback_progression.hpp"
+#include "iox2/client_error.hpp"
 #include "iox2/config_creation_error.hpp"
 #include "iox2/connection_failure.hpp"
 #include "iox2/iceoryx2.h"
@@ -26,10 +27,13 @@
 #include "iox2/node_failure_enums.hpp"
 #include "iox2/node_wait_failure.hpp"
 #include "iox2/notifier_error.hpp"
+#include "iox2/port_error.hpp"
 #include "iox2/publisher_error.hpp"
 #include "iox2/semantic_string.hpp"
+#include "iox2/server_error.hpp"
 #include "iox2/service_builder_event_error.hpp"
 #include "iox2/service_builder_publish_subscribe_error.hpp"
+#include "iox2/service_builder_request_response_error.hpp"
 #include "iox2/service_error_enums.hpp"
 #include "iox2/service_type.hpp"
 #include "iox2/signal_handling_mode.hpp"
@@ -232,6 +236,8 @@ constexpr auto from<iox2::MessagingPattern, iox2_messaging_pattern_e>(const iox2
         return iox2_messaging_pattern_e_PUBLISH_SUBSCRIBE;
     case iox2::MessagingPattern::Event:
         return iox2_messaging_pattern_e_EVENT;
+    case iox2::MessagingPattern::RequestResponse:
+        return iox2_messaging_pattern_e_REQUEST_RESPONSE;
     }
 
     IOX_UNREACHABLE();
@@ -304,6 +310,8 @@ constexpr auto from<int, iox2::EventOpenOrCreateError>(const int value) noexcept
         return iox2::EventOpenOrCreateError::OpenIncompatibleMessagingPattern;
     case iox2_event_open_or_create_error_e_O_INCOMPATIBLE_ATTRIBUTES:
         return iox2::EventOpenOrCreateError::OpenIncompatibleAttributes;
+    case iox2_event_open_or_create_error_e_O_INCOMPATIBLE_DEADLINE:
+        return iox2::EventOpenOrCreateError::OpenIncompatibleDeadline;
     case iox2_event_open_or_create_error_e_O_INTERNAL_FAILURE:
         return iox2::EventOpenOrCreateError::OpenInternalFailure;
     case iox2_event_open_or_create_error_e_O_HANGS_IN_CREATION:
@@ -340,6 +348,8 @@ constexpr auto from<int, iox2::EventOpenOrCreateError>(const int value) noexcept
         return iox2::EventOpenOrCreateError::CreateInsufficientPermissions;
     case iox2_event_open_or_create_error_e_C_OLD_CONNECTION_STILL_ACTIVE:
         return iox2::EventOpenOrCreateError::CreateOldConnectionsStillActive;
+    case iox2_event_open_or_create_error_e_SYSTEM_IN_FLUX:
+        return iox2::EventOpenOrCreateError::SystemInFlux;
     }
 
     IOX_UNREACHABLE();
@@ -583,6 +593,8 @@ constexpr auto from<int, iox2::PublishSubscribeOpenOrCreateError>(const int valu
         return iox2::PublishSubscribeOpenOrCreateError::CreateHangsInCreation;
     case iox2_pub_sub_open_or_create_error_e_C_OLD_CONNECTION_STILL_ACTIVE:
         return iox2::PublishSubscribeOpenOrCreateError::CreateOldConnectionsStillActive;
+    case iox2_pub_sub_open_or_create_error_e_SYSTEM_IN_FLUX:
+        return iox2::PublishSubscribeOpenOrCreateError::SystemInFlux;
     }
 
     IOX_UNREACHABLE();
@@ -800,6 +812,370 @@ from<iox2::PublishSubscribeOpenOrCreateError, const char*>(const iox2::PublishSu
 }
 
 template <>
+constexpr auto from<int, iox2::RequestResponseCreateError>(const int value) noexcept
+    -> iox2::RequestResponseCreateError {
+    const auto error = static_cast<iox2_request_response_open_or_create_error_e>(value);
+    switch (error) {
+    case iox2_request_response_open_or_create_error_e_C_ALREADY_EXISTS:
+        return iox2::RequestResponseCreateError::AlreadyExists;
+    case iox2_request_response_open_or_create_error_e_C_INTERNAL_FAILURE:
+        return iox2::RequestResponseCreateError::InternalFailure;
+    case iox2_request_response_open_or_create_error_e_C_IS_BEING_CREATED_BY_ANOTHER_INSTANCE:
+        return iox2::RequestResponseCreateError::IsBeingCreatedByAnotherInstance;
+    case iox2_request_response_open_or_create_error_e_C_INSUFFICIENT_PERMISSIONS:
+        return iox2::RequestResponseCreateError::InsufficientPermissions;
+    case iox2_request_response_open_or_create_error_e_C_HANGS_IN_CREATION:
+        return iox2::RequestResponseCreateError::HangsInCreation;
+    case iox2_request_response_open_or_create_error_e_C_SERVICE_IN_CORRUPTED_STATE:
+        return iox2::RequestResponseCreateError::ServiceInCorruptedState;
+    default:
+        IOX_UNREACHABLE();
+    }
+}
+
+template <>
+constexpr auto from<iox2::RequestResponseCreateError, iox2_request_response_open_or_create_error_e>(
+    const iox2::RequestResponseCreateError value) noexcept -> iox2_request_response_open_or_create_error_e {
+    switch (value) {
+    case iox2::RequestResponseCreateError::AlreadyExists:
+        return iox2_request_response_open_or_create_error_e_C_ALREADY_EXISTS;
+    case iox2::RequestResponseCreateError::InternalFailure:
+        return iox2_request_response_open_or_create_error_e_C_INTERNAL_FAILURE;
+    case iox2::RequestResponseCreateError::IsBeingCreatedByAnotherInstance:
+        return iox2_request_response_open_or_create_error_e_C_IS_BEING_CREATED_BY_ANOTHER_INSTANCE;
+    case iox2::RequestResponseCreateError::InsufficientPermissions:
+        return iox2_request_response_open_or_create_error_e_C_INSUFFICIENT_PERMISSIONS;
+    case iox2::RequestResponseCreateError::HangsInCreation:
+        return iox2_request_response_open_or_create_error_e_C_HANGS_IN_CREATION;
+    case iox2::RequestResponseCreateError::ServiceInCorruptedState:
+        return iox2_request_response_open_or_create_error_e_C_SERVICE_IN_CORRUPTED_STATE;
+    default:
+        IOX_UNREACHABLE();
+    }
+}
+
+template <>
+inline auto from<iox2::RequestResponseCreateError, const char*>(const iox2::RequestResponseCreateError value) noexcept
+    -> const char* {
+    return iox2_request_response_open_or_create_error_string(
+        iox::into<iox2_request_response_open_or_create_error_e>(value));
+}
+
+template <>
+constexpr auto from<int, iox2::RequestResponseOpenError>(const int value) noexcept -> iox2::RequestResponseOpenError {
+    const auto error = static_cast<iox2_request_response_open_or_create_error_e>(value);
+    switch (error) {
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_EXIST:
+        return iox2::RequestResponseOpenError::DoesNotExist;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_CLIENT_REQUEST_LOANS:
+        return iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfClientRequestLoans;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_ACTIVE_REQUESTS_PER_CLIENT:
+        return iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfActiveRequestsPerClient;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_RESPONSE_BUFFER_SIZE:
+        return iox2::RequestResponseOpenError::DoesNotSupportRequestedResponseBufferSize;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_SERVERS:
+        return iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfServers;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_CLIENTS:
+        return iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfClients;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_NODES:
+        return iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfNodes;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_BORROWED_RESPONSES_PER_PENDING_RESPONSE:
+        return iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfBorrowedResponsesPerPendingResponse;
+    case iox2_request_response_open_or_create_error_e_O_EXCEEDS_MAX_NUMBER_OF_NODES:
+        return iox2::RequestResponseOpenError::ExceedsMaxNumberOfNodes;
+    case iox2_request_response_open_or_create_error_e_O_HANGS_IN_CREATION:
+        return iox2::RequestResponseOpenError::HangsInCreation;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_REQUEST_TYPE:
+        return iox2::RequestResponseOpenError::IncompatibleRequestType;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_RESPONSE_TYPE:
+        return iox2::RequestResponseOpenError::IncompatibleResponseType;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_ATTRIBUTES:
+        return iox2::RequestResponseOpenError::IncompatibleAttributes;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_MESSAGING_PATTERN:
+        return iox2::RequestResponseOpenError::IncompatibleMessagingPattern;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_OVERFLOW_BEHAVIOR_FOR_REQUESTS:
+        return iox2::RequestResponseOpenError::IncompatibleOverflowBehaviorForRequests;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_OVERFLOW_BEHAVIOR_FOR_RESPONSES:
+        return iox2::RequestResponseOpenError::IncompatibleOverflowBehaviorForResponses;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_BEHAVIOR_FOR_FIRE_AND_FORGET_REQUESTS:
+        return iox2::RequestResponseOpenError::IncompatibleBehaviorForFireAndForgetRequests;
+    case iox2_request_response_open_or_create_error_e_O_INSUFFICIENT_PERMISSIONS:
+        return iox2::RequestResponseOpenError::InsufficientPermissions;
+    case iox2_request_response_open_or_create_error_e_O_INTERNAL_FAILURE:
+        return iox2::RequestResponseOpenError::InternalFailure;
+    case iox2_request_response_open_or_create_error_e_O_IS_MARKED_FOR_DESTRUCTION:
+        return iox2::RequestResponseOpenError::IsMarkedForDestruction;
+    case iox2_request_response_open_or_create_error_e_O_SERVICE_IN_CORRUPTED_STATE:
+        return iox2::RequestResponseOpenError::ServiceInCorruptedState;
+    default:
+        IOX_UNREACHABLE();
+    }
+}
+
+template <>
+constexpr auto from<iox2::RequestResponseOpenError, iox2_request_response_open_or_create_error_e>(
+    const iox2::RequestResponseOpenError value) noexcept -> iox2_request_response_open_or_create_error_e {
+    switch (value) {
+    case iox2::RequestResponseOpenError::DoesNotExist:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_EXIST;
+    case iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfClientRequestLoans:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_CLIENT_REQUEST_LOANS;
+    case iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfActiveRequestsPerClient:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_ACTIVE_REQUESTS_PER_CLIENT;
+    case iox2::RequestResponseOpenError::DoesNotSupportRequestedResponseBufferSize:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_RESPONSE_BUFFER_SIZE;
+    case iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfServers:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_SERVERS;
+    case iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfClients:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_CLIENTS;
+    case iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfNodes:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_NODES;
+    case iox2::RequestResponseOpenError::DoesNotSupportRequestedAmountOfBorrowedResponsesPerPendingResponse:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_BORROWED_RESPONSES_PER_PENDING_RESPONSE;
+    case iox2::RequestResponseOpenError::ExceedsMaxNumberOfNodes:
+        return iox2_request_response_open_or_create_error_e_O_EXCEEDS_MAX_NUMBER_OF_NODES;
+    case iox2::RequestResponseOpenError::HangsInCreation:
+        return iox2_request_response_open_or_create_error_e_O_HANGS_IN_CREATION;
+    case iox2::RequestResponseOpenError::IncompatibleRequestType:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_REQUEST_TYPE;
+    case iox2::RequestResponseOpenError::IncompatibleResponseType:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_RESPONSE_TYPE;
+    case iox2::RequestResponseOpenError::IncompatibleAttributes:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_ATTRIBUTES;
+    case iox2::RequestResponseOpenError::IncompatibleMessagingPattern:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_MESSAGING_PATTERN;
+    case iox2::RequestResponseOpenError::IncompatibleOverflowBehaviorForRequests:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_OVERFLOW_BEHAVIOR_FOR_REQUESTS;
+    case iox2::RequestResponseOpenError::IncompatibleOverflowBehaviorForResponses:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_OVERFLOW_BEHAVIOR_FOR_RESPONSES;
+    case iox2::RequestResponseOpenError::IncompatibleBehaviorForFireAndForgetRequests:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_BEHAVIOR_FOR_FIRE_AND_FORGET_REQUESTS;
+    case iox2::RequestResponseOpenError::InsufficientPermissions:
+        return iox2_request_response_open_or_create_error_e_O_INSUFFICIENT_PERMISSIONS;
+    case iox2::RequestResponseOpenError::InternalFailure:
+        return iox2_request_response_open_or_create_error_e_O_INTERNAL_FAILURE;
+    case iox2::RequestResponseOpenError::IsMarkedForDestruction:
+        return iox2_request_response_open_or_create_error_e_O_IS_MARKED_FOR_DESTRUCTION;
+    case iox2::RequestResponseOpenError::ServiceInCorruptedState:
+        return iox2_request_response_open_or_create_error_e_O_SERVICE_IN_CORRUPTED_STATE;
+    default:
+        IOX_UNREACHABLE();
+    }
+}
+
+template <>
+inline auto from<iox2::RequestResponseOpenError, const char*>(const iox2::RequestResponseOpenError value) noexcept
+    -> const char* {
+    return iox2_request_response_open_or_create_error_string(
+        iox::into<iox2_request_response_open_or_create_error_e>(value));
+}
+
+template <>
+constexpr auto from<int, iox2::RequestResponseOpenOrCreateError>(const int value) noexcept
+    -> iox2::RequestResponseOpenOrCreateError {
+    const auto error = static_cast<iox2_request_response_open_or_create_error_e>(value);
+    switch (error) {
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_EXIST:
+        return iox2::RequestResponseOpenOrCreateError::OpenDoesNotExist;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_CLIENT_REQUEST_LOANS:
+        return iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfClientRequestLoans;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_ACTIVE_REQUESTS_PER_CLIENT:
+        return iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfActiveRequestsPerClient;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_RESPONSE_BUFFER_SIZE:
+        return iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedResponseBufferSize;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_SERVERS:
+        return iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfServers;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_CLIENTS:
+        return iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfClients;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_NODES:
+        return iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfNodes;
+    case iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_BORROWED_RESPONSES_PER_PENDING_RESPONSE:
+        return iox2::RequestResponseOpenOrCreateError::
+            OpenDoesNotSupportRequestedAmountOfBorrowedResponsesPerPendingResponse;
+    case iox2_request_response_open_or_create_error_e_O_EXCEEDS_MAX_NUMBER_OF_NODES:
+        return iox2::RequestResponseOpenOrCreateError::OpenExceedsMaxNumberOfNodes;
+    case iox2_request_response_open_or_create_error_e_O_HANGS_IN_CREATION:
+        return iox2::RequestResponseOpenOrCreateError::OpenHangsInCreation;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_REQUEST_TYPE:
+        return iox2::RequestResponseOpenOrCreateError::OpenIncompatibleRequestType;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_RESPONSE_TYPE:
+        return iox2::RequestResponseOpenOrCreateError::OpenIncompatibleResponseType;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_ATTRIBUTES:
+        return iox2::RequestResponseOpenOrCreateError::OpenIncompatibleAttributes;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_MESSAGING_PATTERN:
+        return iox2::RequestResponseOpenOrCreateError::OpenIncompatibleMessagingPattern;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_OVERFLOW_BEHAVIOR_FOR_REQUESTS:
+        return iox2::RequestResponseOpenOrCreateError::OpenIncompatibleOverflowBehaviorForRequests;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_OVERFLOW_BEHAVIOR_FOR_RESPONSES:
+        return iox2::RequestResponseOpenOrCreateError::OpenIncompatibleOverflowBehaviorForResponses;
+    case iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_BEHAVIOR_FOR_FIRE_AND_FORGET_REQUESTS:
+        return iox2::RequestResponseOpenOrCreateError::OpenIncompatibleBehaviorForFireAndForgetRequests;
+    case iox2_request_response_open_or_create_error_e_O_INSUFFICIENT_PERMISSIONS:
+        return iox2::RequestResponseOpenOrCreateError::OpenInsufficientPermissions;
+    case iox2_request_response_open_or_create_error_e_O_INTERNAL_FAILURE:
+        return iox2::RequestResponseOpenOrCreateError::OpenInternalFailure;
+    case iox2_request_response_open_or_create_error_e_O_IS_MARKED_FOR_DESTRUCTION:
+        return iox2::RequestResponseOpenOrCreateError::OpenIsMarkedForDestruction;
+    case iox2_request_response_open_or_create_error_e_O_SERVICE_IN_CORRUPTED_STATE:
+        return iox2::RequestResponseOpenOrCreateError::OpenServiceInCorruptedState;
+
+    case iox2_request_response_open_or_create_error_e_C_ALREADY_EXISTS:
+        return iox2::RequestResponseOpenOrCreateError::CreateAlreadyExists;
+    case iox2_request_response_open_or_create_error_e_C_INTERNAL_FAILURE:
+        return iox2::RequestResponseOpenOrCreateError::CreateInternalFailure;
+    case iox2_request_response_open_or_create_error_e_C_IS_BEING_CREATED_BY_ANOTHER_INSTANCE:
+        return iox2::RequestResponseOpenOrCreateError::CreateIsBeingCreatedByAnotherInstance;
+    case iox2_request_response_open_or_create_error_e_C_INSUFFICIENT_PERMISSIONS:
+        return iox2::RequestResponseOpenOrCreateError::CreateInsufficientPermissions;
+    case iox2_request_response_open_or_create_error_e_C_HANGS_IN_CREATION:
+        return iox2::RequestResponseOpenOrCreateError::CreateHangsInCreation;
+    case iox2_request_response_open_or_create_error_e_C_SERVICE_IN_CORRUPTED_STATE:
+        return iox2::RequestResponseOpenOrCreateError::CreateServiceInCorruptedState;
+    case iox2_request_response_open_or_create_error_e_SYSTEM_IN_FLUX:
+        return iox2::RequestResponseOpenOrCreateError::SystemInFlux;
+
+    default:
+        IOX_UNREACHABLE();
+    }
+}
+
+template <>
+constexpr auto from<iox2::RequestResponseOpenOrCreateError, iox2_request_response_open_or_create_error_e>(
+    const iox2::RequestResponseOpenOrCreateError value) noexcept -> iox2_request_response_open_or_create_error_e {
+    switch (value) {
+    case iox2::RequestResponseOpenOrCreateError::OpenDoesNotExist:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_EXIST;
+    case iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfClientRequestLoans:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_CLIENT_REQUEST_LOANS;
+    case iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfActiveRequestsPerClient:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_ACTIVE_REQUESTS_PER_CLIENT;
+    case iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedResponseBufferSize:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_RESPONSE_BUFFER_SIZE;
+    case iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfServers:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_SERVERS;
+    case iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfClients:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_CLIENTS;
+    case iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfNodes:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_NODES;
+    case iox2::RequestResponseOpenOrCreateError::OpenDoesNotSupportRequestedAmountOfBorrowedResponsesPerPendingResponse:
+        return iox2_request_response_open_or_create_error_e_O_DOES_NOT_SUPPORT_REQUESTED_AMOUNT_OF_BORROWED_RESPONSES_PER_PENDING_RESPONSE;
+    case iox2::RequestResponseOpenOrCreateError::OpenExceedsMaxNumberOfNodes:
+        return iox2_request_response_open_or_create_error_e_O_EXCEEDS_MAX_NUMBER_OF_NODES;
+    case iox2::RequestResponseOpenOrCreateError::OpenHangsInCreation:
+        return iox2_request_response_open_or_create_error_e_O_HANGS_IN_CREATION;
+    case iox2::RequestResponseOpenOrCreateError::OpenIncompatibleRequestType:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_REQUEST_TYPE;
+    case iox2::RequestResponseOpenOrCreateError::OpenIncompatibleResponseType:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_RESPONSE_TYPE;
+    case iox2::RequestResponseOpenOrCreateError::OpenIncompatibleAttributes:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_ATTRIBUTES;
+    case iox2::RequestResponseOpenOrCreateError::OpenIncompatibleMessagingPattern:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_MESSAGING_PATTERN;
+    case iox2::RequestResponseOpenOrCreateError::OpenIncompatibleOverflowBehaviorForRequests:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_OVERFLOW_BEHAVIOR_FOR_REQUESTS;
+    case iox2::RequestResponseOpenOrCreateError::OpenIncompatibleOverflowBehaviorForResponses:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_OVERFLOW_BEHAVIOR_FOR_RESPONSES;
+    case iox2::RequestResponseOpenOrCreateError::OpenIncompatibleBehaviorForFireAndForgetRequests:
+        return iox2_request_response_open_or_create_error_e_O_INCOMPATIBLE_BEHAVIOR_FOR_FIRE_AND_FORGET_REQUESTS;
+    case iox2::RequestResponseOpenOrCreateError::OpenInsufficientPermissions:
+        return iox2_request_response_open_or_create_error_e_O_INSUFFICIENT_PERMISSIONS;
+    case iox2::RequestResponseOpenOrCreateError::OpenInternalFailure:
+        return iox2_request_response_open_or_create_error_e_O_INTERNAL_FAILURE;
+    case iox2::RequestResponseOpenOrCreateError::OpenIsMarkedForDestruction:
+        return iox2_request_response_open_or_create_error_e_O_IS_MARKED_FOR_DESTRUCTION;
+    case iox2::RequestResponseOpenOrCreateError::OpenServiceInCorruptedState:
+        return iox2_request_response_open_or_create_error_e_O_SERVICE_IN_CORRUPTED_STATE;
+
+    case iox2::RequestResponseOpenOrCreateError::CreateAlreadyExists:
+        return iox2_request_response_open_or_create_error_e_C_ALREADY_EXISTS;
+    case iox2::RequestResponseOpenOrCreateError::CreateInternalFailure:
+        return iox2_request_response_open_or_create_error_e_C_INTERNAL_FAILURE;
+    case iox2::RequestResponseOpenOrCreateError::CreateIsBeingCreatedByAnotherInstance:
+        return iox2_request_response_open_or_create_error_e_C_IS_BEING_CREATED_BY_ANOTHER_INSTANCE;
+    case iox2::RequestResponseOpenOrCreateError::CreateInsufficientPermissions:
+        return iox2_request_response_open_or_create_error_e_C_INSUFFICIENT_PERMISSIONS;
+    case iox2::RequestResponseOpenOrCreateError::CreateHangsInCreation:
+        return iox2_request_response_open_or_create_error_e_C_HANGS_IN_CREATION;
+    case iox2::RequestResponseOpenOrCreateError::CreateServiceInCorruptedState:
+        return iox2_request_response_open_or_create_error_e_C_SERVICE_IN_CORRUPTED_STATE;
+    case iox2::RequestResponseOpenOrCreateError::SystemInFlux:
+        return iox2_request_response_open_or_create_error_e_SYSTEM_IN_FLUX;
+    default:
+        IOX_UNREACHABLE();
+    }
+}
+
+template <>
+inline auto
+from<iox2::RequestResponseOpenOrCreateError, const char*>(const iox2::RequestResponseOpenOrCreateError value) noexcept
+    -> const char* {
+    return iox2_request_response_open_or_create_error_string(
+        iox::into<iox2_request_response_open_or_create_error_e>(value));
+}
+
+template <>
+constexpr auto from<int, iox2::ClientCreateError>(const int value) noexcept -> iox2::ClientCreateError {
+    const auto error = static_cast<iox2_client_create_error_e>(value);
+    switch (error) {
+    case iox2_client_create_error_e_EXCEEDS_MAX_SUPPORTED_CLIENTS:
+        return iox2::ClientCreateError::ExceedsMaxSupportedClients;
+    case iox2_client_create_error_e_UNABLE_TO_CREATE_DATA_SEGMENT:
+        return iox2::ClientCreateError::UnableToCreateDataSegment;
+    }
+
+    IOX_UNREACHABLE();
+}
+
+template <>
+constexpr auto from<iox2::ClientCreateError, iox2_client_create_error_e>(const iox2::ClientCreateError value) noexcept
+    -> iox2_client_create_error_e {
+    switch (value) {
+    case iox2::ClientCreateError::ExceedsMaxSupportedClients:
+        return iox2_client_create_error_e_EXCEEDS_MAX_SUPPORTED_CLIENTS;
+    case iox2::ClientCreateError::UnableToCreateDataSegment:
+        return iox2_client_create_error_e_UNABLE_TO_CREATE_DATA_SEGMENT;
+    }
+
+    IOX_UNREACHABLE();
+}
+
+template <>
+inline auto from<iox2::ClientCreateError, const char*>(const iox2::ClientCreateError value) noexcept -> const char* {
+    return iox2_client_create_error_string(iox::into<iox2_client_create_error_e>(value));
+}
+
+template <>
+constexpr auto from<int, iox2::ServerCreateError>(const int value) noexcept -> iox2::ServerCreateError {
+    const auto error = static_cast<iox2_server_create_error_e>(value);
+    switch (error) {
+    case iox2_server_create_error_e_EXCEEDS_MAX_SUPPORTED_SERVERS:
+        return iox2::ServerCreateError::ExceedsMaxSupportedServers;
+    case iox2_server_create_error_e_UNABLE_TO_CREATE_DATA_SEGMENT:
+        return iox2::ServerCreateError::UnableToCreateDataSegment;
+    }
+
+    IOX_UNREACHABLE();
+}
+
+template <>
+constexpr auto from<iox2::ServerCreateError, iox2_server_create_error_e>(const iox2::ServerCreateError value) noexcept
+    -> iox2_server_create_error_e {
+    switch (value) {
+    case iox2::ServerCreateError::ExceedsMaxSupportedServers:
+        return iox2_server_create_error_e_EXCEEDS_MAX_SUPPORTED_SERVERS;
+    case iox2::ServerCreateError::UnableToCreateDataSegment:
+        return iox2_server_create_error_e_UNABLE_TO_CREATE_DATA_SEGMENT;
+    }
+
+    IOX_UNREACHABLE();
+}
+
+template <>
+inline auto from<iox2::ServerCreateError, const char*>(const iox2::ServerCreateError value) noexcept -> const char* {
+    return iox2_server_create_error_string(iox::into<iox2_server_create_error_e>(value));
+}
+
+template <>
 constexpr auto from<int, iox2::NotifierCreateError>(const int value) noexcept -> iox2::NotifierCreateError {
     const auto error = static_cast<iox2_notifier_create_error_e>(value);
     switch (error) {
@@ -867,6 +1243,10 @@ constexpr auto from<int, iox2::NotifierNotifyError>(const int value) noexcept ->
     switch (error) {
     case iox2_notifier_notify_error_e_EVENT_ID_OUT_OF_BOUNDS:
         return iox2::NotifierNotifyError::EventIdOutOfBounds;
+    case iox2_notifier_notify_error_e_MISSED_DEADLINE:
+        return iox2::NotifierNotifyError::MissedDeadline;
+    case iox2_notifier_notify_error_e_UNABLE_TO_ACQUIRE_ELAPSED_TIME:
+        return iox2::NotifierNotifyError::UnableToAcquireElapsedTime;
     }
 
     IOX_UNREACHABLE();
@@ -879,6 +1259,10 @@ from<iox2::NotifierNotifyError, iox2_notifier_notify_error_e>(const iox2::Notifi
     switch (value) {
     case iox2::NotifierNotifyError::EventIdOutOfBounds:
         return iox2_notifier_notify_error_e_EVENT_ID_OUT_OF_BOUNDS;
+    case iox2::NotifierNotifyError::MissedDeadline:
+        return iox2_notifier_notify_error_e_MISSED_DEADLINE;
+    case iox2::NotifierNotifyError::UnableToAcquireElapsedTime:
+        return iox2_notifier_notify_error_e_UNABLE_TO_ACQUIRE_ELAPSED_TIME;
     }
 
     IOX_UNREACHABLE();
@@ -992,132 +1376,181 @@ inline auto from<iox2::SubscriberCreateError, const char*>(const iox2::Subscribe
 }
 
 template <>
-constexpr auto from<int, iox2::PublisherSendError>(const int value) noexcept -> iox2::PublisherSendError {
-    const auto error = static_cast<iox2_publisher_send_error_e>(value);
+constexpr auto from<int, iox2::SendError>(const int value) noexcept -> iox2::SendError {
+    const auto error = static_cast<iox2_send_error_e>(value);
     switch (error) {
-    case iox2_publisher_send_error_e_CONNECTION_BROKEN_SINCE_PUBLISHER_NO_LONGER_EXISTS:
-        return iox2::PublisherSendError::ConnectionBrokenSincePublisherNoLongerExists;
-    case iox2_publisher_send_error_e_CONNECTION_CORRUPTED:
-        return iox2::PublisherSendError::ConnectionCorrupted;
-    case iox2_publisher_send_error_e_LOAN_ERROR_OUT_OF_MEMORY:
-        return iox2::PublisherSendError::LoanErrorOutOfMemory;
-    case iox2_publisher_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOANED_SAMPLES:
-        return iox2::PublisherSendError::LoanErrorExceedsMaxLoanedSamples;
-    case iox2_publisher_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOAN_SIZE:
-        return iox2::PublisherSendError::LoanErrorExceedsMaxLoanSize;
-    case iox2_publisher_send_error_e_LOAN_ERROR_INTERNAL_FAILURE:
-        return iox2::PublisherSendError::LoanErrorInternalFailure;
-    case iox2_publisher_send_error_e_CONNECTION_ERROR:
-        return iox2::PublisherSendError::ConnectionError;
+    case iox2_send_error_e_CONNECTION_BROKEN_SINCE_SENDER_NO_LONGER_EXISTS:
+        return iox2::SendError::ConnectionBrokenSinceSenderNoLongerExists;
+    case iox2_send_error_e_CONNECTION_CORRUPTED:
+        return iox2::SendError::ConnectionCorrupted;
+    case iox2_send_error_e_LOAN_ERROR_OUT_OF_MEMORY:
+        return iox2::SendError::LoanErrorOutOfMemory;
+    case iox2_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOANS:
+        return iox2::SendError::LoanErrorExceedsMaxLoans;
+    case iox2_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOAN_SIZE:
+        return iox2::SendError::LoanErrorExceedsMaxLoanSize;
+    case iox2_send_error_e_LOAN_ERROR_INTERNAL_FAILURE:
+        return iox2::SendError::LoanErrorInternalFailure;
+    case iox2_send_error_e_CONNECTION_ERROR:
+        return iox2::SendError::ConnectionError;
     }
 
     IOX_UNREACHABLE();
 }
 
 template <>
-constexpr auto
-from<iox2::PublisherSendError, iox2_publisher_send_error_e>(const iox2::PublisherSendError value) noexcept
-    -> iox2_publisher_send_error_e {
+constexpr auto from<iox2::SendError, iox2_send_error_e>(const iox2::SendError value) noexcept -> iox2_send_error_e {
     switch (value) {
-    case iox2::PublisherSendError::ConnectionBrokenSincePublisherNoLongerExists:
-        return iox2_publisher_send_error_e_CONNECTION_BROKEN_SINCE_PUBLISHER_NO_LONGER_EXISTS;
-    case iox2::PublisherSendError::ConnectionCorrupted:
-        return iox2_publisher_send_error_e_CONNECTION_CORRUPTED;
-    case iox2::PublisherSendError::LoanErrorOutOfMemory:
-        return iox2_publisher_send_error_e_LOAN_ERROR_OUT_OF_MEMORY;
-    case iox2::PublisherSendError::LoanErrorExceedsMaxLoanedSamples:
-        return iox2_publisher_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOANED_SAMPLES;
-    case iox2::PublisherSendError::LoanErrorExceedsMaxLoanSize:
-        return iox2_publisher_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOAN_SIZE;
-    case iox2::PublisherSendError::LoanErrorInternalFailure:
-        return iox2_publisher_send_error_e_LOAN_ERROR_INTERNAL_FAILURE;
-    case iox2::PublisherSendError::ConnectionError:
-        return iox2_publisher_send_error_e_CONNECTION_ERROR;
+    case iox2::SendError::ConnectionBrokenSinceSenderNoLongerExists:
+        return iox2_send_error_e_CONNECTION_BROKEN_SINCE_SENDER_NO_LONGER_EXISTS;
+    case iox2::SendError::ConnectionCorrupted:
+        return iox2_send_error_e_CONNECTION_CORRUPTED;
+    case iox2::SendError::LoanErrorOutOfMemory:
+        return iox2_send_error_e_LOAN_ERROR_OUT_OF_MEMORY;
+    case iox2::SendError::LoanErrorExceedsMaxLoans:
+        return iox2_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOANS;
+    case iox2::SendError::LoanErrorExceedsMaxLoanSize:
+        return iox2_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOAN_SIZE;
+    case iox2::SendError::LoanErrorInternalFailure:
+        return iox2_send_error_e_LOAN_ERROR_INTERNAL_FAILURE;
+    case iox2::SendError::ConnectionError:
+        return iox2_send_error_e_CONNECTION_ERROR;
     }
 
     IOX_UNREACHABLE();
 }
 
 template <>
-inline auto from<iox2::PublisherSendError, const char*>(const iox2::PublisherSendError value) noexcept -> const char* {
-    return iox2_publisher_send_error_string(iox::into<iox2_publisher_send_error_e>(value));
+inline auto from<iox2::SendError, const char*>(const iox2::SendError value) noexcept -> const char* {
+    return iox2_send_error_string(iox::into<iox2_send_error_e>(value));
 }
 
 template <>
-constexpr auto from<int, iox2::SubscriberReceiveError>(const int value) noexcept -> iox2::SubscriberReceiveError {
-    const auto error = static_cast<iox2_subscriber_receive_error_e>(value);
+constexpr auto from<int, iox2::ReceiveError>(const int value) noexcept -> iox2::ReceiveError {
+    const auto error = static_cast<iox2_receive_error_e>(value);
     switch (error) {
-    case iox2_subscriber_receive_error_e_FAILED_TO_ESTABLISH_CONNECTION:
-        return iox2::SubscriberReceiveError::FailedToEstablishConnection;
-    case iox2_subscriber_receive_error_e_UNABLE_TO_MAP_PUBLISHERS_DATA_SEGMENT:
-        return iox2::SubscriberReceiveError::UnableToMapPublishersDataSegment;
-    case iox2_subscriber_receive_error_e_EXCEEDS_MAX_BORROWED_SAMPLES:
-        return iox2::SubscriberReceiveError::ExceedsMaxBorrowedSamples;
+    case iox2_receive_error_e_FAILED_TO_ESTABLISH_CONNECTION:
+        return iox2::ReceiveError::FailedToEstablishConnection;
+    case iox2_receive_error_e_UNABLE_TO_MAP_SENDERS_DATA_SEGMENT:
+        return iox2::ReceiveError::UnableToMapSendersDataSegment;
+    case iox2_receive_error_e_EXCEEDS_MAX_BORROWS:
+        return iox2::ReceiveError::ExceedsMaxBorrows;
     }
 
     IOX_UNREACHABLE();
 }
 
 template <>
-constexpr auto
-from<iox2::SubscriberReceiveError, iox2_subscriber_receive_error_e>(const iox2::SubscriberReceiveError value) noexcept
-    -> iox2_subscriber_receive_error_e {
+constexpr auto from<iox2::ReceiveError, iox2_receive_error_e>(const iox2::ReceiveError value) noexcept
+    -> iox2_receive_error_e {
     switch (value) {
-    case iox2::SubscriberReceiveError::FailedToEstablishConnection:
-        return iox2_subscriber_receive_error_e_FAILED_TO_ESTABLISH_CONNECTION;
-    case iox2::SubscriberReceiveError::UnableToMapPublishersDataSegment:
-        return iox2_subscriber_receive_error_e_UNABLE_TO_MAP_PUBLISHERS_DATA_SEGMENT;
-    case iox2::SubscriberReceiveError::ExceedsMaxBorrowedSamples:
-        return iox2_subscriber_receive_error_e_EXCEEDS_MAX_BORROWED_SAMPLES;
+    case iox2::ReceiveError::FailedToEstablishConnection:
+        return iox2_receive_error_e_FAILED_TO_ESTABLISH_CONNECTION;
+    case iox2::ReceiveError::UnableToMapSendersDataSegment:
+        return iox2_receive_error_e_UNABLE_TO_MAP_SENDERS_DATA_SEGMENT;
+    case iox2::ReceiveError::ExceedsMaxBorrows:
+        return iox2_receive_error_e_EXCEEDS_MAX_BORROWS;
     }
 
     IOX_UNREACHABLE();
 }
 
 template <>
-inline auto from<iox2::SubscriberReceiveError, const char*>(const iox2::SubscriberReceiveError value) noexcept -> const
-    char* {
-    return iox2_subscriber_receive_error_string(iox::into<iox2_subscriber_receive_error_e>(value));
+inline auto from<iox2::ReceiveError, const char*>(const iox2::ReceiveError value) noexcept -> const char* {
+    return iox2_receive_error_string(iox::into<iox2_receive_error_e>(value));
 }
 
 template <>
-constexpr auto from<int, iox2::PublisherLoanError>(const int value) noexcept -> iox2::PublisherLoanError {
-    const auto error = static_cast<iox2_publisher_loan_error_e>(value);
+constexpr auto from<int, iox2::LoanError>(const int value) noexcept -> iox2::LoanError {
+    const auto error = static_cast<iox2_loan_error_e>(value);
     switch (error) {
-    case iox2_publisher_loan_error_e_EXCEEDS_MAX_LOANED_SAMPLES:
-        return iox2::PublisherLoanError::ExceedsMaxLoanedSamples;
-    case iox2_publisher_loan_error_e_OUT_OF_MEMORY:
-        return iox2::PublisherLoanError::OutOfMemory;
-    case iox2_publisher_loan_error_e_EXCEEDS_MAX_LOAN_SIZE:
-        return iox2::PublisherLoanError::ExceedsMaxLoanSize;
-    case iox2_publisher_loan_error_e_INTERNAL_FAILURE:
-        return iox2::PublisherLoanError::InternalFailure;
+    case iox2_loan_error_e_EXCEEDS_MAX_LOANED_SAMPLES:
+        return iox2::LoanError::ExceedsMaxLoanedSamples;
+    case iox2_loan_error_e_OUT_OF_MEMORY:
+        return iox2::LoanError::OutOfMemory;
+    case iox2_loan_error_e_EXCEEDS_MAX_LOAN_SIZE:
+        return iox2::LoanError::ExceedsMaxLoanSize;
+    case iox2_loan_error_e_INTERNAL_FAILURE:
+        return iox2::LoanError::InternalFailure;
     }
 
     IOX_UNREACHABLE();
 }
 
 template <>
-constexpr auto
-from<iox2::PublisherLoanError, iox2_publisher_loan_error_e>(const iox2::PublisherLoanError value) noexcept
-    -> iox2_publisher_loan_error_e {
+constexpr auto from<iox2::LoanError, iox2_loan_error_e>(const iox2::LoanError value) noexcept -> iox2_loan_error_e {
     switch (value) {
-    case iox2::PublisherLoanError::ExceedsMaxLoanedSamples:
-        return iox2_publisher_loan_error_e_EXCEEDS_MAX_LOANED_SAMPLES;
-    case iox2::PublisherLoanError::OutOfMemory:
-        return iox2_publisher_loan_error_e_OUT_OF_MEMORY;
-    case iox2::PublisherLoanError::ExceedsMaxLoanSize:
-        return iox2_publisher_loan_error_e_EXCEEDS_MAX_LOAN_SIZE;
-    case iox2::PublisherLoanError::InternalFailure:
-        return iox2_publisher_loan_error_e_INTERNAL_FAILURE;
+    case iox2::LoanError::ExceedsMaxLoanedSamples:
+        return iox2_loan_error_e_EXCEEDS_MAX_LOANED_SAMPLES;
+    case iox2::LoanError::OutOfMemory:
+        return iox2_loan_error_e_OUT_OF_MEMORY;
+    case iox2::LoanError::ExceedsMaxLoanSize:
+        return iox2_loan_error_e_EXCEEDS_MAX_LOAN_SIZE;
+    case iox2::LoanError::InternalFailure:
+        return iox2_loan_error_e_INTERNAL_FAILURE;
     }
 
     IOX_UNREACHABLE();
 }
 
 template <>
-inline auto from<iox2::PublisherLoanError, const char*>(const iox2::PublisherLoanError value) noexcept -> const char* {
-    return iox2_publisher_loan_error_string(iox::into<iox2_publisher_loan_error_e>(value));
+inline auto from<iox2::LoanError, const char*>(const iox2::LoanError value) noexcept -> const char* {
+    return iox2_loan_error_string(iox::into<iox2_loan_error_e>(value));
+}
+
+template <>
+constexpr auto from<int, iox2::RequestSendError>(const int value) noexcept -> iox2::RequestSendError {
+    const auto error = static_cast<iox2_request_send_error_e>(value);
+    switch (error) {
+    case iox2_request_send_error_e_EXCEEDS_MAX_ACTIVE_REQUESTS:
+        return iox2::RequestSendError::ExceedsMaxActiveRequests;
+    case iox2_request_send_error_e_CONNECTION_BROKEN_SINCE_SENDER_NO_LONGER_EXISTS:
+        return iox2::RequestSendError::ConnectionBrokenSinceSenderNoLongerExists;
+    case iox2_request_send_error_e_CONNECTION_CORRUPTED:
+        return iox2::RequestSendError::ConnectionCorrupted;
+    case iox2_request_send_error_e_LOAN_ERROR_OUT_OF_MEMORY:
+        return iox2::RequestSendError::LoanErrorOutOfMemory;
+    case iox2_request_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOANS:
+        return iox2::RequestSendError::LoanErrorExceedsMaxLoans;
+    case iox2_request_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOAN_SIZE:
+        return iox2::RequestSendError::LoanErrorExceedsMaxLoanSize;
+    case iox2_request_send_error_e_LOAN_ERROR_INTERNAL_FAILURE:
+        return iox2::RequestSendError::LoanErrorInternalFailure;
+    case iox2_request_send_error_e_CONNECTION_ERROR:
+        return iox2::RequestSendError::ConnectionError;
+    }
+
+    IOX_UNREACHABLE();
+}
+
+template <>
+constexpr auto from<iox2::RequestSendError, iox2_request_send_error_e>(const iox2::RequestSendError value) noexcept
+    -> iox2_request_send_error_e {
+    switch (value) {
+    case iox2::RequestSendError::ExceedsMaxActiveRequests:
+        return iox2_request_send_error_e_EXCEEDS_MAX_ACTIVE_REQUESTS;
+    case iox2::RequestSendError::ConnectionBrokenSinceSenderNoLongerExists:
+        return iox2_request_send_error_e_CONNECTION_BROKEN_SINCE_SENDER_NO_LONGER_EXISTS;
+    case iox2::RequestSendError::ConnectionCorrupted:
+        return iox2_request_send_error_e_CONNECTION_CORRUPTED;
+    case iox2::RequestSendError::LoanErrorOutOfMemory:
+        return iox2_request_send_error_e_LOAN_ERROR_OUT_OF_MEMORY;
+    case iox2::RequestSendError::LoanErrorExceedsMaxLoans:
+        return iox2_request_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOANS;
+    case iox2::RequestSendError::LoanErrorExceedsMaxLoanSize:
+        return iox2_request_send_error_e_LOAN_ERROR_EXCEEDS_MAX_LOAN_SIZE;
+    case iox2::RequestSendError::LoanErrorInternalFailure:
+        return iox2_request_send_error_e_LOAN_ERROR_INTERNAL_FAILURE;
+    case iox2::RequestSendError::ConnectionError:
+        return iox2_request_send_error_e_CONNECTION_ERROR;
+    }
+
+    IOX_UNREACHABLE();
+}
+
+template <>
+inline auto from<iox2::RequestSendError, const char*>(const iox2::RequestSendError value) noexcept -> const char* {
+    return iox2_request_send_error_string(iox::into<iox2_request_send_error_e>(value));
 }
 
 template <>
@@ -1172,6 +1605,8 @@ constexpr auto from<int, iox2::MessagingPattern>(const int value) noexcept -> io
         return iox2::MessagingPattern::Event;
     case iox2_messaging_pattern_e_PUBLISH_SUBSCRIBE:
         return iox2::MessagingPattern::PublishSubscribe;
+    case iox2_messaging_pattern_e_REQUEST_RESPONSE:
+        return iox2::MessagingPattern::RequestResponse;
     }
 
     IOX_UNREACHABLE();
@@ -1208,8 +1643,8 @@ constexpr auto from<int, iox2::ConnectionFailure>(const int value) noexcept -> i
     switch (variant) {
     case iox2_connection_failure_e_FAILED_TO_ESTABLISH_CONNECTION:
         return iox2::ConnectionFailure::FailedToEstablishConnection;
-    case iox2_connection_failure_e_UNABLE_TO_MAP_PUBLISHERS_DATA_SEGMENT:
-        return iox2::ConnectionFailure::UnableToMapPublishersDataSegment;
+    case iox2_connection_failure_e_UNABLE_TO_MAP_SENDERS_DATA_SEGMENT:
+        return iox2::ConnectionFailure::UnableToMapSendersDataSegment;
     }
 
     IOX_UNREACHABLE();
@@ -1221,8 +1656,8 @@ constexpr auto from<iox2::ConnectionFailure, iox2_connection_failure_e>(const io
     switch (value) {
     case iox2::ConnectionFailure::FailedToEstablishConnection:
         return iox2_connection_failure_e_FAILED_TO_ESTABLISH_CONNECTION;
-    case iox2::ConnectionFailure::UnableToMapPublishersDataSegment:
-        return iox2_connection_failure_e_UNABLE_TO_MAP_PUBLISHERS_DATA_SEGMENT;
+    case iox2::ConnectionFailure::UnableToMapSendersDataSegment:
+        return iox2_connection_failure_e_UNABLE_TO_MAP_SENDERS_DATA_SEGMENT;
     }
 
     IOX_UNREACHABLE();
@@ -1237,12 +1672,16 @@ template <>
 constexpr auto from<int, iox2::ConfigCreationError>(const int value) noexcept -> iox2::ConfigCreationError {
     const auto variant = static_cast<iox2_config_creation_error_e>(value);
     switch (variant) {
-    case iox2_config_creation_error_e_FAILED_TO_OPEN_CONFIG_FILE:
-        return iox2::ConfigCreationError::FailedToOpenConfigFile;
     case iox2_config_creation_error_e_FAILED_TO_READ_CONFIG_FILE_CONTENTS:
         return iox2::ConfigCreationError::FailedToReadConfigFileContents;
     case iox2_config_creation_error_e_UNABLE_TO_DESERIALIZE_CONTENTS:
         return iox2::ConfigCreationError::UnableToDeserializeContents;
+    case iox2_config_creation_error_e_INSUFFICIENT_PERMISSIONS:
+        return iox2::ConfigCreationError::InsufficientPermissions;
+    case iox2_config_creation_error_e_CONFIG_FILE_DOES_NOT_EXIST:
+        return iox2::ConfigCreationError::ConfigFileDoesNotExist;
+    case iox2_config_creation_error_e_UNABLE_TO_OPEN_CONFIG_FILE:
+        return iox2::ConfigCreationError::UnableToOpenConfigFile;
     case iox2_config_creation_error_e_INVALID_FILE_PATH:
         // unreachable since this error case is excluded by using the strong type iox::FilePath
         IOX_UNREACHABLE();
@@ -1256,12 +1695,16 @@ constexpr auto
 from<iox2::ConfigCreationError, iox2_config_creation_error_e>(const iox2::ConfigCreationError value) noexcept
     -> iox2_config_creation_error_e {
     switch (value) {
-    case iox2::ConfigCreationError::FailedToOpenConfigFile:
-        return iox2_config_creation_error_e_FAILED_TO_OPEN_CONFIG_FILE;
     case iox2::ConfigCreationError::FailedToReadConfigFileContents:
         return iox2_config_creation_error_e_FAILED_TO_READ_CONFIG_FILE_CONTENTS;
     case iox2::ConfigCreationError::UnableToDeserializeContents:
         return iox2_config_creation_error_e_UNABLE_TO_DESERIALIZE_CONTENTS;
+    case iox2::ConfigCreationError::InsufficientPermissions:
+        return iox2_config_creation_error_e_INSUFFICIENT_PERMISSIONS;
+    case iox2::ConfigCreationError::ConfigFileDoesNotExist:
+        return iox2_config_creation_error_e_CONFIG_FILE_DOES_NOT_EXIST;
+    case iox2::ConfigCreationError::UnableToOpenConfigFile:
+        return iox2_config_creation_error_e_UNABLE_TO_OPEN_CONFIG_FILE;
     }
 
     IOX_UNREACHABLE();
@@ -1509,6 +1952,8 @@ constexpr auto from<int, iox2::NodeCleanupFailure>(const int value) noexcept -> 
         return iox2::NodeCleanupFailure::InternalError;
     case iox2_node_cleanup_failure_e_INSUFFICIENT_PERMISSIONS:
         return iox2::NodeCleanupFailure::InsufficientPermissions;
+    case iox2_node_cleanup_failure_e_VERSION_MISMATCH:
+        return iox2::NodeCleanupFailure::VersionMismatch;
     }
 
     IOX_UNREACHABLE();

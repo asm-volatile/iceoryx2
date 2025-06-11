@@ -10,6 +10,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#![warn(clippy::alloc_instead_of_core)]
+#![warn(clippy::std_instead_of_alloc)]
+#![warn(clippy::std_instead_of_core)]
 #![warn(missing_docs)]
 
 //! # iceoryx2 Building Blocks (BB) Container
@@ -47,7 +50,7 @@
 //!     some_data: FixedSizeVec<u64, DATA_CAPACITY>,
 //! }
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let my_message = MyMessageType {
 //!     some_text: FixedSizeByteString::from_bytes(b"Hello World")?,
 //!     some_data: FixedSizeVec::new(),
@@ -77,7 +80,7 @@
 //!     some_queue: Queue<u64>,
 //! }
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let my_thing = MyType {
 //!     some_queue: Queue::new(QUEUE_CAPACITY),
 //! };

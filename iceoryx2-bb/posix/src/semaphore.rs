@@ -15,8 +15,8 @@
 
 pub use crate::ipc_capable::{Handle, IpcCapable};
 
-use std::cell::UnsafeCell;
-use std::fmt::Debug;
+use core::cell::UnsafeCell;
+use core::fmt::Debug;
 
 use crate::ipc_capable::internal::{Capability, HandleStorage, IpcConstructible};
 use iceoryx2_bb_container::semantic_string::*;
@@ -36,7 +36,7 @@ use crate::{
     handle_errno,
     system_configuration::*,
 };
-use std::time::Duration;
+use core::time::Duration;
 
 pub use crate::clock::ClockType;
 pub use crate::creation_mode::CreationMode;
@@ -283,7 +283,7 @@ impl NamedSemaphoreBuilder {
     pub fn new(name: &FileName) -> Self {
         Self {
             creation_mode: None,
-            name: *name,
+            name: name.clone(),
             initial_value: 0,
             permission: Permission::OWNER_ALL,
             clock_type: ClockType::default(),
@@ -348,7 +348,7 @@ impl NamedSemaphoreCreationBuilder {
 /// ```no_run
 /// use iceoryx2_bb_posix::semaphore::*;
 /// use iceoryx2_bb_posix::clock::*;
-/// use std::time::Duration;
+/// use core::time::Duration;
 /// use iceoryx2_bb_system_types::file_name::FileName;
 /// use iceoryx2_bb_container::semantic_string::*;
 ///
@@ -400,7 +400,7 @@ unsafe impl Sync for NamedSemaphore {}
 
 impl Drop for NamedSemaphore {
     fn drop(&mut self) {
-        if self.handle == posix::SEM_FAILED {
+        if core::ptr::eq(self.handle, posix::SEM_FAILED) {
             return;
         }
 
@@ -505,7 +505,7 @@ impl NamedSemaphore {
             },
         };
 
-        if self.handle != posix::SEM_FAILED {
+        if !core::ptr::eq(self.handle, posix::SEM_FAILED) {
             match mode {
                 InitMode::Create => debug!(from self, "semaphore created."),
                 _ => debug!(from self, "semaphore opened."),
@@ -703,7 +703,7 @@ impl Drop for UnnamedSemaphoreHandle {
 /// use iceoryx2_bb_posix::semaphore::*;
 /// use std::thread;
 /// use iceoryx2_bb_posix::clock::*;
-/// use std::time::Duration;
+/// use core::time::Duration;
 ///
 /// let semaphore_handle = UnnamedSemaphoreHandle::new();
 /// let semaphore = UnnamedSemaphoreBuilder::new().create(&semaphore_handle)

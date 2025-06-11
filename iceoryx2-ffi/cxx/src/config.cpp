@@ -159,6 +159,10 @@ auto Defaults::publish_subscribe() && -> PublishSubscribe {
 auto Defaults::event() && -> Event {
     return Event(m_config);
 }
+
+auto Defaults::request_response() && -> RequestResponse {
+    return RequestResponse(m_config);
+}
 /////////////////////////
 // END: Defaults
 /////////////////////////
@@ -253,6 +257,26 @@ void Event::set_notifier_dead_event(iox::optional<size_t> value) && {
     }
 }
 
+auto Event::deadline() && -> iox::optional<iox::units::Duration> {
+    uint64_t seconds = 0;
+    uint32_t nanoseconds = 0;
+    if (iox2_config_defaults_event_deadline(m_config, &seconds, &nanoseconds)) {
+        return { iox::units::Duration::fromSeconds(seconds) + iox::units::Duration::fromNanoseconds(nanoseconds) };
+    }
+
+    return iox::nullopt;
+}
+
+void Event::set_deadline(iox::optional<iox::units::Duration> value) && {
+    value
+        .and_then([&](auto value) {
+            const uint64_t seconds = value.toSeconds();
+            const uint32_t nanoseconds =
+                value.toNanoseconds() - (value.toSeconds() * iox::units::Duration::NANOSECS_PER_SEC);
+            iox2_config_defaults_event_set_deadline(m_config, &seconds, &nanoseconds);
+        })
+        .or_else([&] { iox2_config_defaults_event_set_deadline(m_config, nullptr, nullptr); });
+}
 /////////////////////////
 // END: Event
 /////////////////////////
@@ -364,12 +388,12 @@ void Service::set_directory(const iox::Path& value) && {
     iox2_config_global_service_set_directory(m_config, value.as_string().c_str());
 }
 
-auto Service::publisher_data_segment_suffix() && -> const char* {
-    return iox2_config_global_service_publisher_data_segment_suffix(m_config);
+auto Service::data_segment_suffix() && -> const char* {
+    return iox2_config_global_service_data_segment_suffix(m_config);
 }
 
-void Service::set_publisher_data_segment_suffix(const iox::FileName& value) && {
-    iox2_config_global_service_set_publisher_data_segment_suffix(m_config, value.as_string().c_str());
+void Service::set_data_segment_suffix(const iox::FileName& value) && {
+    iox2_config_global_service_set_data_segment_suffix(m_config, value.as_string().c_str());
 }
 
 auto Service::static_config_storage_suffix() && -> const char* {
@@ -476,6 +500,140 @@ void Node::set_cleanup_dead_nodes_on_destruction(bool value) && {
 }
 /////////////////////////
 // END: Node
+/////////////////////////
+
+/////////////////////////
+// BEGIN: RequestResponse
+/////////////////////////
+RequestResponse::RequestResponse(iox2_config_h* config)
+    : m_config { config } {
+}
+
+auto RequestResponse::enable_safe_overflow_for_requests() && -> bool {
+    return iox2_config_defaults_request_response_enable_safe_overflow_for_requests(m_config);
+}
+
+void RequestResponse::set_enable_safe_overflow_for_requests(bool value) && {
+    iox2_config_defaults_request_response_set_enable_safe_overflow_for_requests(m_config, value);
+}
+
+auto RequestResponse::enable_safe_overflow_for_responses() && -> bool {
+    return iox2_config_defaults_request_response_enable_safe_overflow_for_responses(m_config);
+}
+
+void RequestResponse::set_enable_safe_overflow_for_responses(bool value) && {
+    iox2_config_defaults_request_response_set_enable_safe_overflow_for_responses(m_config, value);
+}
+
+auto RequestResponse::max_active_requests_per_client() && -> size_t {
+    return iox2_config_defaults_request_response_max_active_requests_per_client(m_config);
+}
+
+void RequestResponse::set_max_active_requests_per_client(size_t value) && {
+    iox2_config_defaults_request_response_set_max_active_requests_per_client(m_config, value);
+}
+
+auto RequestResponse::max_response_buffer_size() && -> size_t {
+    return iox2_config_defaults_request_response_max_response_buffer_size(m_config);
+}
+
+void RequestResponse::set_max_response_buffer_size(size_t value) && {
+    iox2_config_defaults_request_response_set_max_response_buffer_size(m_config, value);
+}
+
+auto RequestResponse::max_servers() && -> size_t {
+    return iox2_config_defaults_request_response_max_servers(m_config);
+}
+
+void RequestResponse::set_max_servers(size_t value) && {
+    iox2_config_defaults_request_response_set_max_servers(m_config, value);
+}
+
+auto RequestResponse::max_clients() && -> size_t {
+    return iox2_config_defaults_request_response_max_clients(m_config);
+}
+
+void RequestResponse::set_max_clients(size_t value) && {
+    iox2_config_defaults_request_response_set_max_clients(m_config, value);
+}
+
+auto RequestResponse::max_nodes() && -> size_t {
+    return iox2_config_defaults_request_response_max_nodes(m_config);
+}
+
+void RequestResponse::set_max_nodes(size_t value) && {
+    iox2_config_defaults_request_response_set_max_nodes(m_config, value);
+}
+
+auto RequestResponse::max_borrowed_responses_per_pending_response() && -> size_t {
+    return iox2_config_defaults_request_response_max_borrowed_responses_per_pending_response(m_config);
+}
+
+void RequestResponse::set_max_borrowed_responses_per_pending_response(size_t value) && {
+    iox2_config_defaults_request_response_set_max_borrowed_responses_per_pending_response(m_config, value);
+}
+
+auto RequestResponse::max_loaned_requests() && -> size_t {
+    return iox2_config_defaults_request_response_max_loaned_requests(m_config);
+}
+
+void RequestResponse::set_max_loaned_requests(size_t value) && {
+    iox2_config_defaults_request_response_set_max_loaned_requests(m_config, value);
+}
+
+auto RequestResponse::server_max_loaned_responses_per_request() && -> size_t {
+    return iox2_config_defaults_request_response_server_max_loaned_responses_per_request(m_config);
+}
+
+void RequestResponse::set_server_max_loaned_responses_per_request(size_t value) && {
+    iox2_config_defaults_request_response_set_server_max_loaned_responses_per_request(m_config, value);
+}
+
+auto RequestResponse::client_unable_to_deliver_strategy() && -> UnableToDeliverStrategy {
+    return iox::into<UnableToDeliverStrategy>(
+        iox2_config_defaults_request_response_client_unable_to_deliver_strategy(m_config));
+}
+
+void RequestResponse::set_client_unable_to_deliver_strategy(UnableToDeliverStrategy value) && {
+    iox2_config_defaults_request_response_set_client_unable_to_deliver_strategy(
+        m_config, static_cast<iox2_unable_to_deliver_strategy_e>(value));
+}
+
+auto RequestResponse::server_unable_to_deliver_strategy() && -> UnableToDeliverStrategy {
+    return iox::into<UnableToDeliverStrategy>(
+        iox2_config_defaults_request_response_server_unable_to_deliver_strategy(m_config));
+}
+
+void RequestResponse::set_server_unable_to_deliver_strategy(UnableToDeliverStrategy value) && {
+    iox2_config_defaults_request_response_set_server_unable_to_deliver_strategy(
+        m_config, static_cast<iox2_unable_to_deliver_strategy_e>(value));
+}
+
+auto RequestResponse::client_expired_connection_buffer() && -> size_t {
+    return iox2_config_defaults_request_response_client_expired_connection_buffer(m_config);
+}
+
+void RequestResponse::set_client_expired_connection_buffer(size_t value) && {
+    iox2_config_defaults_request_response_set_client_expired_connection_buffer(m_config, value);
+}
+
+auto RequestResponse::server_expired_connection_buffer() && -> size_t {
+    return iox2_config_defaults_request_response_server_expired_connection_buffer(m_config);
+}
+
+void RequestResponse::set_server_expired_connection_buffer(size_t value) && {
+    iox2_config_defaults_request_response_set_server_expired_connection_buffer(m_config, value);
+}
+
+auto RequestResponse::enable_fire_and_forget_requests() && -> bool {
+    return iox2_config_defaults_request_response_has_fire_and_forget_requests(m_config);
+}
+
+void RequestResponse::set_enable_fire_and_forget_requests(bool value) && {
+    iox2_config_defaults_request_response_set_fire_and_forget_requests(m_config, value);
+}
+/////////////////////////
+// END: RequestResponse
 /////////////////////////
 } // namespace config
 } // namespace iox2

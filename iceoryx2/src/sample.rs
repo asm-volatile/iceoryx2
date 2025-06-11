@@ -14,7 +14,7 @@
 //!
 //! ```
 //! use iceoryx2::prelude::*;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! # let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
 //! #   .publish_subscribe::<u64>()
@@ -30,36 +30,39 @@
 //! # }
 //! ```
 
-use std::sync::Arc;
-use std::{fmt::Debug, ops::Deref};
+use core::{fmt::Debug, ops::Deref};
 
-use iceoryx2_bb_log::fatal_panic;
-use iceoryx2_cal::zero_copy_connection::{PointerOffset, ZeroCopyReceiver, ZeroCopyReleaseError};
+extern crate alloc;
 
-use crate::port::details::publisher_connections::Connection;
+use iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend;
+use iceoryx2_bb_log::error;
+use iceoryx2_bb_posix::unique_system_id::UniqueSystemId;
+use iceoryx2_cal::zero_copy_connection::{ChannelId, ZeroCopyReceiver, ZeroCopyReleaseError};
+
+use crate::port::details::chunk_details::ChunkDetails;
 use crate::port::port_identifiers::UniquePublisherId;
 use crate::raw_sample::RawSample;
 use crate::service::header::publish_subscribe::Header;
 
-#[derive(Debug)]
-pub(crate) struct SampleDetails<Service: crate::service::Service> {
-    pub(crate) publisher_connection: Arc<Connection<Service>>,
-    pub(crate) offset: PointerOffset,
-    pub(crate) origin: UniquePublisherId,
-}
-
 /// It stores the payload and is acquired by the [`Subscriber`](crate::port::subscriber::Subscriber) whenever
 /// it receives new data from a [`Publisher`](crate::port::publisher::Publisher) via
 /// [`Subscriber::receive()`](crate::port::subscriber::Subscriber::receive()).
-pub struct Sample<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader> {
+pub struct Sample<
+    Service: crate::service::Service,
+    Payload: Debug + ?Sized + ZeroCopySend,
+    UserHeader: ZeroCopySend,
+> {
     pub(crate) ptr: RawSample<Header, UserHeader, Payload>,
-    pub(crate) details: SampleDetails<Service>,
+    pub(crate) details: ChunkDetails<Service>,
 }
 
-impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader> Debug
-    for Sample<Service, Payload, UserHeader>
+impl<
+        Service: crate::service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: ZeroCopySend,
+    > Debug for Sample<Service, Payload, UserHeader>
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
             "Sample<{}, {}, {}> {{ details: {:?} }}",
@@ -71,8 +74,11 @@ impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader> Debu
     }
 }
 
-impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader> Deref
-    for Sample<Service, Payload, UserHeader>
+impl<
+        Service: crate::service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: ZeroCopySend,
+    > Deref for Sample<Service, Payload, UserHeader>
 {
     type Target = Payload;
     fn deref(&self) -> &Self::Target {
@@ -80,33 +86,39 @@ impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader> Dere
     }
 }
 
-impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader> Drop
-    for Sample<Service, Payload, UserHeader>
+impl<
+        Service: crate::service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: ZeroCopySend,
+    > Drop for Sample<Service, Payload, UserHeader>
 {
     fn drop(&mut self) {
         unsafe {
             self.details
-                .publisher_connection
+                .connection
                 .data_segment
                 .unregister_offset(self.details.offset)
         };
 
         match self
             .details
-            .publisher_connection
+            .connection
             .receiver
-            .release(self.details.offset)
+            .release(self.details.offset, ChannelId::new(0))
         {
             Ok(()) => (),
             Err(ZeroCopyReleaseError::RetrieveBufferFull) => {
-                fatal_panic!(from self, "This should never happen! The publishers retrieve channel is full and the sample cannot be returned.");
+                error!(from self, "This should never happen! The publishers retrieve channel is full and the sample cannot be returned.");
             }
         }
     }
 }
 
-impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader>
-    Sample<Service, Payload, UserHeader>
+impl<
+        Service: crate::service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: ZeroCopySend,
+    > Sample<Service, Payload, UserHeader>
 {
     /// Returns a reference to the payload of the [`Sample`]
     pub fn payload(&self) -> &Payload {
@@ -125,6 +137,6 @@ impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader>
 
     /// Returns the [`UniquePublisherId`] of the [`Publisher`](crate::port::publisher::Publisher)
     pub fn origin(&self) -> UniquePublisherId {
-        self.details.origin
+        UniquePublisherId(UniqueSystemId::from(self.details.origin))
     }
 }

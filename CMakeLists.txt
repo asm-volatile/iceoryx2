@@ -11,7 +11,7 @@
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 
 cmake_minimum_required(VERSION 3.22)
-set(IOX2_VERSION_STRING "0.5.0")
+set(IOX2_VERSION_STRING "0.6.0")
 project(iceoryx2 VERSION ${IOX2_VERSION_STRING})
 
 #TODO how to handle feature flags
@@ -100,6 +100,13 @@ add_rust_feature(
     DESCRIPTION "The permissions of all resources will be set to read, write, execute for everyone."
     DEFAULT_VALUE OFF
     RUST_FEATURE "iceoryx2/dev_permissions"
+)
+
+add_rust_feature(
+    NAME IOX2_FEATURE_LIBC_PLATFORM
+    DESCRIPTION "A platform abstraction based on the libc crate, eliminating the need for bindgen. Only available on Linux."
+    DEFAULT_VALUE OFF
+    RUST_FEATURE "iceoryx2/libc_platform"
 )
 
 add_rust_feature(

@@ -12,9 +12,14 @@
 
 use iceoryx2_bb_posix::thread::*;
 use iceoryx2_bb_testing::assert_that;
-use std::sync::Arc;
+
+use core::time::Duration;
+
+extern crate alloc;
+use alloc::sync::Arc;
+
 use std::sync::Barrier;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[test]
 fn thread_set_name_works() {
@@ -34,7 +39,7 @@ fn thread_set_name_works() {
     };
 
     barrier.wait();
-    let name = *thread.get_name().unwrap();
+    let name = thread.get_name().unwrap().clone();
     barrier.wait();
     drop(thread);
 

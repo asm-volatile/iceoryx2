@@ -15,8 +15,11 @@ use examples_common::PubSubEvent;
 use iceoryx2::{node::NodeView, prelude::*};
 
 const CYCLE_TIME: Duration = Duration::from_millis(100);
+const DEADLINE_SERVICE_1: Duration = Duration::from_millis(1500);
+const DEADLINE_SERVICE_2: Duration = Duration::from_millis(2000);
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn core::error::Error>> {
+    set_log_level_from_env_or(LogLevel::Info);
     let service_name_1 = ServiceName::new("service_1")?;
     let service_name_2 = ServiceName::new("service_2")?;
 
@@ -36,6 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _service_event_1 = node
         .service_builder(&service_name_1)
         .event()
+        // Defines the maximum timespan between two notifications for this service. The user of a
+        // notifier that send a notification after the deadline was already reached, receives an
+        // MISSED_DEADLINE error after the notification was delivered.
+        .deadline(DEADLINE_SERVICE_1)
         // Whenever a new notifier is created the PublisherConnected event is emitted. this makes
         // sense since in this example a notifier is always created after a new publisher was
         // created.
@@ -56,6 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _service_event_2 = node
         .service_builder(&service_name_2)
         .event()
+        .deadline(DEADLINE_SERVICE_2)
         .notifier_created_event(PubSubEvent::PublisherConnected.into())
         .notifier_dropped_event(PubSubEvent::PublisherDisconnected.into())
         .notifier_dead_event(PubSubEvent::ProcessDied.into())

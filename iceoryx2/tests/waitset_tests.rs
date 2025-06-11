@@ -12,7 +12,8 @@
 
 #[generic_tests::define]
 mod waitset {
-    use std::time::{Duration, Instant};
+    use core::time::Duration;
+    use std::time::Instant;
 
     use iceoryx2::port::listener::Listener;
     use iceoryx2::port::notifier::Notifier;
@@ -84,7 +85,7 @@ mod waitset {
     }
 
     #[test]
-    fn calling_run_on_empty_waitset_fails<S: Service>() {
+    fn calling_wait_and_process_once_on_empty_waitset_fails<S: Service>() {
         let sut = WaitSetBuilder::new().create::<S>().unwrap();
         let result = sut.wait_and_process_once(|_| CallbackProgression::Continue);
 
@@ -175,7 +176,7 @@ mod waitset {
     }
 
     #[test]
-    fn run_lists_all_notifications<S: Service>()
+    fn wait_and_process_once_lists_all_notifications<S: Service>()
     where
         <S::Event as Event>::Listener: SynchronousMultiplexing,
     {
@@ -224,7 +225,7 @@ mod waitset {
     }
 
     #[test]
-    fn run_with_tick_interval_blocks_for_at_least_timeout<S: Service>()
+    fn wait_and_process_once_with_tick_interval_blocks_for_at_least_timeout<S: Service>()
     where
         <S::Event as Event>::Listener: SynchronousMultiplexing,
     {
@@ -252,7 +253,7 @@ mod waitset {
     }
 
     #[test]
-    fn run_with_deadline_blocks_for_at_least_timeout<S: Service>()
+    fn wait_and_process_once_with_deadline_blocks_for_at_least_timeout<S: Service>()
     where
         <S::Event as Event>::Listener: SynchronousMultiplexing,
     {
@@ -275,7 +276,7 @@ mod waitset {
     }
 
     #[test]
-    fn run_does_not_block_longer_than_provided_timeout<S: Service>()
+    fn wait_and_process_once_does_not_block_longer_than_provided_timeout<S: Service>()
     where
         <S::Event as Event>::Listener: SynchronousMultiplexing,
     {
@@ -300,7 +301,37 @@ mod waitset {
     }
 
     #[test]
-    fn run_does_block_until_interval_when_user_timeout_is_larger<S: Service>()
+    fn wait_and_process_once_with_timeout_blocks_at_each_invocation<S: Service>()
+    where
+        <S::Event as Event>::Listener: SynchronousMultiplexing,
+    {
+        let _watchdog = Watchdog::new_with_timeout(TIMEOUT * 40);
+        let sut = WaitSetBuilder::new().create::<S>().unwrap();
+
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+        let (listener, _) = create_event::<S>(&node);
+        let _listener_guard = sut.attach_notification(&listener).unwrap();
+
+        for _ in 0..3 {
+            let mut callback_called = false;
+            let start = Instant::now();
+            sut.wait_and_process_once_with_timeout(
+                |_| {
+                    callback_called = true;
+                    CallbackProgression::Continue
+                },
+                TIMEOUT,
+            )
+            .unwrap();
+
+            assert_that!(callback_called, eq false);
+            assert_that!(start.elapsed(), time_at_least TIMEOUT);
+        }
+    }
+
+    #[test]
+    fn wait_and_process_once_does_block_until_interval_when_user_timeout_is_larger<S: Service>()
     where
         <S::Event as Event>::Listener: SynchronousMultiplexing,
     {
@@ -322,7 +353,7 @@ mod waitset {
     }
 
     #[test]
-    fn run_lists_all_deadlines<S: Service>()
+    fn wait_and_process_once_lists_all_deadlines<S: Service>()
     where
         <S::Event as Event>::Listener: SynchronousMultiplexing,
     {
@@ -378,7 +409,7 @@ mod waitset {
     }
 
     #[test]
-    fn run_lists_all_ticks<S: Service>()
+    fn wait_and_process_once_lists_all_ticks<S: Service>()
     where
         <S::Event as Event>::Listener: SynchronousMultiplexing,
     {
@@ -445,7 +476,7 @@ mod waitset {
     }
 
     #[test]
-    fn run_lists_mixed<S: Service>()
+    fn wait_and_process_once_lists_mixed<S: Service>()
     where
         <S::Event as Event>::Listener: SynchronousMultiplexing,
     {

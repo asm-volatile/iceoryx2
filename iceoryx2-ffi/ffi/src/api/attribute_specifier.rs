@@ -15,16 +15,15 @@
 use crate::api::{AssertNonNullHandle, HandleToType, IOX2_OK};
 
 use iceoryx2::prelude::*;
+use iceoryx2::service::attribute::{AttributeKey, AttributeValue};
+use iceoryx2_bb_container::semantic_string::SemanticString;
 use iceoryx2_bb_elementary::static_assert::*;
 use iceoryx2_ffi_macros::iceoryx2_ffi;
 
 use core::ffi::c_int;
-use std::{
-    ffi::{c_char, CStr},
-    mem::ManuallyDrop,
-};
+use core::{ffi::c_char, mem::ManuallyDrop};
 
-use super::iox2_attribute_set_h_ref;
+use super::iox2_attribute_set_ptr;
 
 // BEGIN type definition
 
@@ -44,7 +43,7 @@ impl AttributeSpecifierType {
 #[repr(C)]
 #[repr(align(8))] // alignment of Option<AttributeSpecifier>
 pub struct iox2_attribute_specifier_storage_t {
-    internal: [u8; 24], // magic number obtained with size_of::<Option<AttributeSpecifier>>()
+    internal: [u8; 5672], // magic number obtained with size_of::<Option<AttributeSpecifier>>()
 }
 
 #[repr(C)]
@@ -116,7 +115,7 @@ pub unsafe extern "C" fn iox2_attribute_specifier_new(
 ) -> c_int {
     debug_assert!(!handle_ptr.is_null());
 
-    *handle_ptr = std::ptr::null_mut();
+    *handle_ptr = core::ptr::null_mut();
 
     let mut struct_ptr = struct_ptr;
     fn no_op(_: *mut iox2_attribute_specifier_t) {}
@@ -168,31 +167,31 @@ pub unsafe extern "C" fn iox2_attribute_specifier_define(
     debug_assert!(!key.is_null());
     debug_assert!(!value.is_null());
 
-    let key = CStr::from_ptr(key).to_str();
-    let value = CStr::from_ptr(value).to_str();
+    let key = AttributeKey::from_c_str(key);
+    let value = AttributeValue::from_c_str(value);
 
     debug_assert!(key.is_ok() && value.is_ok());
 
     let attribute_specifier_struct = &mut *handle.as_type();
     let attribute_specifier = ManuallyDrop::take(&mut attribute_specifier_struct.value.as_mut().0);
     attribute_specifier_struct.set(AttributeSpecifierType::from(
-        attribute_specifier.define(key.unwrap(), value.unwrap()),
+        attribute_specifier.define(&key.unwrap(), &value.unwrap()),
     ));
 }
 
-/// Returnes a [`iox2_attribute_set_h_ref`] to the underlying attribute set.
+/// Returnes a [`iox2_attribute_set_ptr`] to the underlying attribute set.
 ///
 /// # Safety
 ///
 /// * The `handle` must point to an initialized [`iox2_attribute_specifier_h`].
-/// * The `handle` must live at least as long as the returned [`iox2_attribute_set_h_ref`].
+/// * The `handle` must live at least as long as the returned [`iox2_attribute_set_ptr`].
 #[no_mangle]
 pub unsafe extern "C" fn iox2_attribute_specifier_attributes(
     handle: iox2_attribute_specifier_h_ref,
-) -> iox2_attribute_set_h_ref {
+) -> iox2_attribute_set_ptr {
     debug_assert!(!handle.is_null());
 
     let attribute_specifier_struct = &mut *handle.as_type();
-    (attribute_specifier_struct.value.as_ref().0.attributes() as *const AttributeSet).cast()
+    attribute_specifier_struct.value.as_ref().0.attributes()
 }
 // END C API

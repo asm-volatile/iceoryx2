@@ -54,15 +54,15 @@
 //!                            .expect("failed to receive answer");
 //! ```
 
+use core::fmt::Debug;
+use core::sync::atomic::Ordering;
+use core::time::Duration;
 use iceoryx2_bb_log::{fail, fatal_panic, trace};
 use iceoryx2_bb_system_types::ipv4_address::{self, Ipv4Address};
 use iceoryx2_bb_system_types::port::{self, Port};
 use iceoryx2_pal_concurrency_sync::iox_atomic::IoxAtomicBool;
 use iceoryx2_pal_posix::posix::{self, Struct};
 use iceoryx2_pal_posix::posix::{Errno, SockAddrIn};
-use std::fmt::Debug;
-use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 use crate::file_descriptor::{FileDescriptor, FileDescriptorBased};
 use crate::file_descriptor_set::{
@@ -136,8 +136,8 @@ pub enum UdpSendError {
 fn create_sockaddr(address: Ipv4Address, port: Port) -> posix::sockaddr_in {
     let mut addr = posix::sockaddr_in::new();
     addr.sin_family = posix::AF_INET as _;
-    addr.set_s_addr(unsafe { posix::htonl(address.as_u32()) });
-    addr.sin_port = unsafe { posix::htons(port.as_u16()) };
+    addr.set_s_addr(address.as_u32().to_be());
+    addr.sin_port = port.as_u16().to_be();
     addr
 }
 
@@ -154,9 +154,9 @@ impl ReceiveDetails {
         Self {
             number_of_bytes,
             source_ip: unsafe {
-                core::mem::transmute::<u32, Ipv4Address>(posix::ntohl(source.get_s_addr()))
+                core::mem::transmute::<u32, Ipv4Address>(u32::from_be(source.get_s_addr()))
             },
-            source_port: Port::new(unsafe { posix::ntohs(source.sin_port) }),
+            source_port: Port::new(u16::from_be(source.sin_port)),
         }
     }
 }
@@ -526,7 +526,7 @@ struct UdpSocket {
 }
 
 impl Debug for UdpSocket {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
             "UdpSocket {{ socket_fd: {:?}, details: posix::sockaddr_in {{ sin_addr: {}, sin_family: {}, sin_port: {} }}, is_non_blocking: {:?} }}",
@@ -557,11 +557,11 @@ impl UdpSocket {
     }
 
     fn address(&self) -> Ipv4Address {
-        unsafe { core::mem::transmute::<u32, Ipv4Address>(posix::ntohl(self.details.get_s_addr())) }
+        unsafe { core::mem::transmute::<u32, Ipv4Address>(u32::from_be(self.details.get_s_addr())) }
     }
 
     pub fn port(&self) -> Port {
-        Port::new(unsafe { posix::ntohs(self.details.sin_port) })
+        Port::new(u16::from_be(self.details.sin_port))
     }
 
     fn fcntl(&self, command: i32, value: i32, msg: &str) -> Result<i32, UdpReceiveError> {

@@ -13,9 +13,12 @@
 #![allow(non_camel_case_types)]
 
 use iceoryx2::service::attribute::Attribute;
+use iceoryx2_bb_container::semantic_string::SemanticString;
 
 use core::ffi::c_char;
-use std::ffi::CString;
+
+extern crate alloc;
+use alloc::ffi::CString;
 
 // BEGIN types definition
 pub struct iox2_attribute_h_t;
@@ -60,7 +63,7 @@ pub unsafe extern "C" fn iox2_attribute_key(
     debug_assert!(!handle.is_null());
 
     let attribute = (*handle).underlying_type();
-    if let Ok(key) = CString::new(attribute.key()) {
+    if let Ok(key) = CString::new(attribute.key().as_bytes()) {
         let copied_key_length = buffer_len.min(key.as_bytes_with_nul().len());
         core::ptr::copy_nonoverlapping(
             key.as_bytes_with_nul().as_ptr(),
@@ -102,7 +105,7 @@ pub unsafe extern "C" fn iox2_attribute_value(
     debug_assert!(!handle.is_null());
 
     let attribute = (*handle).underlying_type();
-    if let Ok(value) = CString::new(attribute.value()) {
+    if let Ok(value) = CString::new(attribute.value().as_bytes()) {
         let copied_key_length = buffer_len.min(value.as_bytes_with_nul().len());
         core::ptr::copy_nonoverlapping(
             value.as_bytes_with_nul().as_ptr(),

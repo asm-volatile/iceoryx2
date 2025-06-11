@@ -12,15 +12,21 @@
 
 #[generic_tests::define]
 mod dynamic_storage {
+    use core::sync::atomic::{AtomicI64, Ordering};
     use iceoryx2_bb_container::semantic_string::*;
     use iceoryx2_bb_elementary::allocator::*;
     use iceoryx2_bb_system_types::file_name::FileName;
     use iceoryx2_bb_testing::lifetime_tracker::LifetimeTracker;
+    use iceoryx2_bb_testing::watchdog::Watchdog;
     use iceoryx2_bb_testing::{assert_that, test_requires};
     use iceoryx2_cal::dynamic_storage::*;
     use iceoryx2_cal::named_concept::*;
     use iceoryx2_cal::testing::*;
-    use std::sync::atomic::{AtomicI64, Ordering};
+    use iceoryx2_pal_posix::posix::POSIX_SUPPORT_PERSISTENT_SHARED_MEMORY;
+    use std::sync::{Arc, Barrier};
+    use std::time::{Duration, Instant};
+
+    const TIMEOUT: Duration = Duration::from_millis(100);
 
     #[derive(Debug)]
     struct TestData {
@@ -34,7 +40,7 @@ mod dynamic_storage {
         fn new(value: i64) -> Self {
             Self {
                 value: AtomicI64::new(value),
-                supplementary_ptr: std::ptr::null_mut::<u8>(),
+                supplementary_ptr: core::ptr::null_mut::<u8>(),
                 supplementary_len: 0,
                 _lifetime_tracker: None,
             }
@@ -43,7 +49,7 @@ mod dynamic_storage {
         fn new_with_lifetime_tracking(value: i64) -> Self {
             Self {
                 value: AtomicI64::new(value),
-                supplementary_ptr: std::ptr::null_mut::<u8>(),
+                supplementary_ptr: core::ptr::null_mut::<u8>(),
                 supplementary_len: 0,
                 _lifetime_tracker: Some(LifetimeTracker::new()),
             }
@@ -398,6 +404,100 @@ mod dynamic_storage {
         }
     }
 
+    #[ignore] // TODO: iox2-671 enable this test when the concurrency issue is fixed.
+    #[test]
+    fn initialization_blocks_other_openers<
+        Sut: DynamicStorage<TestData>,
+        WrongTypeSut: DynamicStorage<u64>,
+    >() {
+        let storage_name = generate_name();
+        let config = generate_isolated_config::<Sut>();
+        let _watchdog = Watchdog::new();
+        let barrier_1 = Arc::new(Barrier::new(2));
+        let barrier_2 = barrier_1.clone();
+
+        std::thread::scope(|s| {
+            let tstorage_name = storage_name.clone();
+            let config_1 = config.clone();
+            s.spawn(move || {
+                barrier_1.wait();
+                let _sut = Sut::Builder::new(&tstorage_name)
+                    .config(&config_1)
+                    .supplementary_size(0)
+                    .has_ownership(false)
+                    .initializer(|value, _| {
+                        std::thread::sleep(TIMEOUT);
+                        value.value.store(789, Ordering::Relaxed);
+                        true
+                    })
+                    .create(TestData::new(123))
+                    .unwrap();
+            });
+
+            let tstorage_name = storage_name.clone();
+            let config_2 = config.clone();
+            s.spawn(move || {
+                barrier_2.wait();
+                loop {
+                let sut2 = Sut::Builder::new(&tstorage_name).config(&config_2).open();
+                if sut2.is_err() {
+                    let err = sut2.err().unwrap();
+                    assert_that!(err == DynamicStorageOpenError::DoesNotExist || err == DynamicStorageOpenError::InitializationNotYetFinalized, eq true);
+                } else {
+                    assert_that!(sut2.unwrap().get().value.load(Ordering::Relaxed), eq 789);
+                    break;
+                }
+            }});
+        });
+
+        if POSIX_SUPPORT_PERSISTENT_SHARED_MEMORY {
+            assert_that!(Sut::does_exist_cfg(&storage_name, &config), eq Ok(true));
+            assert_that!(unsafe { Sut::remove_cfg(&storage_name, &config) }, eq Ok(true));
+        }
+    }
+
+    #[test]
+    fn initialization_timeout_blocks_for_at_least_timeout<
+        Sut: DynamicStorage<TestData>,
+        WrongTypeSut: DynamicStorage<u64>,
+    >() {
+        let storage_name = generate_name();
+        let config = generate_isolated_config::<Sut>();
+        let barrier = Arc::new(Barrier::new(2));
+        let _watchdog = Watchdog::new();
+
+        std::thread::scope(|s| {
+            let tstorage_name = storage_name.clone();
+            let config_1 = config.clone();
+            let barrier_1 = barrier.clone();
+            s.spawn(move || {
+                let _sut = Sut::Builder::new(&tstorage_name)
+                    .config(&config_1)
+                    .supplementary_size(0)
+                    .initializer(|_, _| {
+                        barrier_1.wait();
+                        std::thread::sleep(TIMEOUT * 2);
+                        true
+                    })
+                    .create(TestData::new(123))
+                    .unwrap();
+            });
+
+            let config_2 = config.clone();
+            let barrier_2 = barrier.clone();
+            s.spawn(move || {
+                barrier_2.wait();
+                let start = Instant::now();
+                let _sut = Sut::Builder::new(&storage_name)
+                    .config(&config_2)
+                    .timeout(TIMEOUT)
+                    .open();
+
+                assert_that!(start.elapsed(), time_at_least TIMEOUT);
+            });
+        });
+    }
+
     #[test]
     fn create_fails_when_initialization_fails<
         Sut: DynamicStorage<TestData>,
@@ -464,7 +564,7 @@ mod dynamic_storage {
             assert_that!(unsafe{<Sut as NamedConceptMgmt>::remove_cfg(&sut_names[i], &config)}, eq Ok(false));
         }
 
-        std::mem::forget(suts);
+        core::mem::forget(suts);
 
         assert_that!(<Sut as NamedConceptMgmt>::list_cfg(&config).unwrap(), len 0);
     }
@@ -515,8 +615,8 @@ mod dynamic_storage {
         assert_that!(*sut_1.name(), eq sut_name);
         assert_that!(*sut_2.name(), eq sut_name);
 
-        std::mem::forget(sut_1);
-        std::mem::forget(sut_2);
+        core::mem::forget(sut_1);
+        core::mem::forget(sut_2);
 
         assert_that!(unsafe {<Sut as NamedConceptMgmt>::remove_cfg(&sut_name, &config_1)}, eq Ok(true));
         assert_that!(unsafe {<Sut as NamedConceptMgmt>::remove_cfg(&sut_name, &config_1)}, eq Ok(false));
@@ -558,7 +658,7 @@ mod dynamic_storage {
     }
 
     #[test]
-    fn when_storage_is_removed_it_calls_drop<
+    fn by_default_when_storage_is_removed_it_calls_drop<
         Sut: DynamicStorage<TestData>,
         WrongTypeSut: DynamicStorage<u64>,
     >() {
@@ -576,6 +676,28 @@ mod dynamic_storage {
         drop(sut);
 
         assert_that!(state.number_of_living_instances(), eq 0);
+    }
+
+    #[test]
+    fn when_drop_on_destruction_is_disabled_remove_does_not_call_drop<
+        Sut: DynamicStorage<TestData>,
+        WrongTypeSut: DynamicStorage<u64>,
+    >() {
+        let state = LifetimeTracker::start_tracking();
+
+        let storage_name = generate_name();
+        let config = generate_isolated_config::<Sut>();
+
+        let sut = Sut::Builder::new(&storage_name)
+            .config(&config)
+            .call_drop_on_destruction(false)
+            .create(TestData::new_with_lifetime_tracking(123))
+            .unwrap();
+
+        assert_that!(sut.has_ownership(), eq true);
+        drop(sut);
+
+        assert_that!(state.number_of_living_instances(), eq 1);
     }
 
     #[test]
@@ -618,24 +740,24 @@ mod dynamic_storage {
         sut.release_ownership();
         // it leaks a memory mapping here but this we want explicitly to test remove also
         // for platforms that do not support persistent dynamic storage
-        std::mem::forget(sut);
+        core::mem::forget(sut);
 
         assert_that!(unsafe { Sut::remove_cfg(&storage_name, &config) }, eq Ok(true));
         assert_that!(state.number_of_living_instances(), eq 0);
     }
 
     #[test]
-    fn remove_storage_with_unfinished_initialization_does_not_call_drop<
+    fn remove_storage_with_unfinished_initialization_does_call_drop<
         Sut: DynamicStorage<TestData> + 'static,
         WrongTypeSut: DynamicStorage<u64>,
     >() {
         let state = LifetimeTracker::start_tracking();
         let config = generate_isolated_config::<Sut>();
 
-        if std::any::TypeId::of::<Sut>()
+        if core::any::TypeId::of::<Sut>()
             // skip process local test since the process locality ensures that an initializer
             // never dies
-            != std::any::TypeId::of::<iceoryx2_cal::dynamic_storage::process_local::Storage<TestData>>(
+            != core::any::TypeId::of::<iceoryx2_cal::dynamic_storage::process_local::Storage<TestData>>(
             )
         {
             let storage_name = generate_name();
@@ -643,13 +765,11 @@ mod dynamic_storage {
             let _ = Sut::Builder::new(&storage_name)
                 .has_ownership(false)
                 .config(&config)
-                .initializer(|_, _| {
-                    assert_that!(unsafe { Sut::remove_cfg(&storage_name, &config) }, eq Ok(true));
-                    false
-                })
+                .initializer(|_, _| false)
                 .create(TestData::new_with_lifetime_tracking(0));
 
-            assert_that!(state.number_of_living_instances(), eq 1);
+            assert_that!(unsafe { Sut::remove_cfg(&storage_name, &config) }, eq Ok(false));
+            assert_that!(state.number_of_living_instances(), eq 0);
         }
     }
 
@@ -697,7 +817,7 @@ mod dynamic_storage {
                     .create(TestData::new(123))
                     .unwrap(),
             );
-            testdata_storages_names.push(storage_name);
+            testdata_storages_names.push(storage_name.clone());
 
             u64_storages.push(
                 WrongTypeSut::Builder::new(&storage_name)

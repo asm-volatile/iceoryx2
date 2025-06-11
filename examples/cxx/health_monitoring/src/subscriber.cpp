@@ -13,6 +13,7 @@
 #include <iostream>
 
 #include "iox/duration.hpp"
+#include "iox2/log.hpp"
 #include "iox2/node.hpp"
 #include "iox2/service_name.hpp"
 #include "iox2/service_type.hpp"
@@ -33,6 +34,7 @@ void handle_incoming_events(Listener<ServiceType::Ipc>& listener,
 } // namespace
 
 auto main() -> int {
+    set_log_level_from_env_or(LogLevel::Info);
     auto service_name_1 = ServiceName::create("service_1").expect("");
     auto service_name_2 = ServiceName::create("service_2").expect("");
 
@@ -52,10 +54,12 @@ auto main() -> int {
 
     auto waitset = WaitSetBuilder().create<ServiceType::Ipc>().expect("");
 
+    // If the service has defined a deadline we will use it, otherwise
     // we expect that the listener receive a message sent event after at most CYCLE_TIME_X
-    // so we add it as a deadline
-    auto listener_1_guard = waitset.attach_deadline(listener_1, CYCLE_TIME_1).expect("");
-    auto listener_2_guard = waitset.attach_deadline(listener_2, CYCLE_TIME_2).expect("");
+    auto deadline_1 = listener_1.deadline().value_or(CYCLE_TIME_1);
+    auto deadline_2 = listener_2.deadline().value_or(CYCLE_TIME_2);
+    auto listener_1_guard = waitset.attach_deadline(listener_1, deadline_1).expect("");
+    auto listener_2_guard = waitset.attach_deadline(listener_2, deadline_2).expect("");
 
     auto missed_deadline = [](const ServiceName& service_name, const iox::units::Duration& cycle_time) {
         std::cout << service_name.to_string().c_str() << ": voilated contract and did not send a message after "
@@ -64,7 +68,7 @@ auto main() -> int {
 
     auto on_event = [&](const WaitSetAttachmentId<ServiceType::Ipc>& attachment_id) {
         if (attachment_id.has_missed_deadline(listener_1_guard)) {
-            missed_deadline(service_name_1, CYCLE_TIME_1);
+            missed_deadline(service_name_1, deadline_1);
             // one cause of a deadline it can be a dead node. usually our "central_daemon" would
             // take care of monitoring but when the node and the central daemon crashed we take
             // over here and check for dead nodes
@@ -72,7 +76,7 @@ auto main() -> int {
         }
 
         if (attachment_id.has_missed_deadline(listener_2_guard)) {
-            missed_deadline(service_name_2, CYCLE_TIME_2);
+            missed_deadline(service_name_2, deadline_2);
             find_and_cleanup_dead_nodes();
         }
 

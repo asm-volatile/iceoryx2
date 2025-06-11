@@ -10,7 +10,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 pub type SegmentIdUnderlyingType = u8;
 
@@ -54,7 +54,7 @@ impl PointerOffset {
 
     /// Creates a new [`PointerOffset`] from an offset and a [`SegmentId`]
     pub const fn from_offset_and_segment_id(offset: usize, segment_id: SegmentId) -> PointerOffset {
-        Self((offset as u64) << (SegmentIdUnderlyingType::BITS) | segment_id.value() as u64)
+        Self(((offset as u64) << (SegmentIdUnderlyingType::BITS)) | segment_id.value() as u64)
     }
 
     /// Creates a new [`PointerOffset`] from a provided raw value.
@@ -85,7 +85,7 @@ impl PointerOffset {
 }
 
 impl Debug for PointerOffset {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
             "PointerOffset {{ offset: {}, segment_id: {:?} }}",

@@ -12,23 +12,24 @@
 
 #[generic_tests::define]
 mod service_publish_subscribe {
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Barrier, Mutex};
     use std::thread;
 
     use iceoryx2::config::Config;
-    use iceoryx2::port::publisher::{PublisherCreateError, PublisherLoanError};
+    use iceoryx2::port::publisher::PublisherCreateError;
     use iceoryx2::port::subscriber::SubscriberCreateError;
     use iceoryx2::port::update_connections::UpdateConnections;
+    use iceoryx2::port::LoanError;
     use iceoryx2::prelude::{AllocationStrategy, *};
     use iceoryx2::service::builder::publish_subscribe::PublishSubscribeCreateError;
     use iceoryx2::service::builder::publish_subscribe::PublishSubscribeOpenError;
-    use iceoryx2::service::builder::publish_subscribe::{CustomHeaderMarker, CustomPayloadMarker};
+    use iceoryx2::service::builder::{CustomHeaderMarker, CustomPayloadMarker};
     use iceoryx2::service::messaging_pattern::MessagingPattern;
-    use iceoryx2::service::port_factory::publisher::UnableToDeliverStrategy;
     use iceoryx2::service::static_config::message_type_details::{TypeDetail, TypeVariant};
     use iceoryx2::service::{Service, ServiceDetails};
     use iceoryx2::testing::*;
+    use iceoryx2_bb_derive_macros::ZeroCopySend;
     use iceoryx2_bb_elementary::alignment::Alignment;
     use iceoryx2_bb_elementary::CallbackProgression;
     use iceoryx2_bb_log::{set_log_level, LogLevel};
@@ -36,7 +37,8 @@ mod service_publish_subscribe {
     use iceoryx2_bb_testing::assert_that;
     use iceoryx2_bb_testing::watchdog::Watchdog;
 
-    #[derive(Debug)]
+    #[derive(Debug, ZeroCopySend)]
+    #[repr(C)]
     struct SomeUserHeader {
         value: [u64; 1024],
     }
@@ -74,14 +76,15 @@ mod service_publish_subscribe {
         let service_name = generate_name();
         let config = generate_isolated_config();
         let node = NodeBuilder::new().config(&config).create::<Sut>().unwrap();
-        let attr = AttributeVerifier::new().require("hello", "world");
+        let attr = AttributeVerifier::new()
+            .require(&"hello".try_into().unwrap(), &"world".try_into().unwrap());
         let sut = node
             .service_builder(&service_name)
             .publish_subscribe::<i64>()
             .open_or_create_with_attributes(&attr);
         assert_that!(sut, is_ok);
 
-        let attr1 = AttributeVerifier::new().require_key("hello");
+        let attr1 = AttributeVerifier::new().require_key(&"hello".try_into().unwrap());
         let sut2 = node
             .service_builder(&service_name)
             .publish_subscribe::<i64>()
@@ -115,14 +118,15 @@ mod service_publish_subscribe {
         let service_name = generate_name();
         let config = generate_isolated_config();
         let node = NodeBuilder::new().config(&config).create::<Sut>().unwrap();
-        let attr = AttributeVerifier::new().require("hello", "world");
+        let attr = AttributeVerifier::new()
+            .require(&"hello".try_into().unwrap(), &"world".try_into().unwrap());
         let sut = node
             .service_builder(&service_name)
             .publish_subscribe::<i64>()
             .open_or_create_with_attributes(&attr);
         assert_that!(sut, is_ok);
 
-        let attr1 = AttributeVerifier::new().require_key("non-exist");
+        let attr1 = AttributeVerifier::new().require_key(&"non-exist".try_into().unwrap());
         let sut2 = node
             .service_builder(&service_name)
             .publish_subscribe::<i64>()
@@ -825,16 +829,16 @@ mod service_publish_subscribe {
         let d = sut.static_config().message_type_details();
         assert_that!(d.header.variant, eq TypeVariant::FixedSize);
         assert_that!(d.header.type_name, eq core::any::type_name::<Header>());
-        assert_that!(d.header.size, eq std::mem::size_of::<Header>());
-        assert_that!(d.header.alignment, eq std::mem::align_of::<Header>());
+        assert_that!(d.header.size, eq core::mem::size_of::<Header>());
+        assert_that!(d.header.alignment, eq core::mem::align_of::<Header>());
         assert_that!(d.user_header.variant, eq TypeVariant::FixedSize);
         assert_that!(d.user_header.type_name, eq core::any::type_name::<SomeUserHeader>());
-        assert_that!(d.user_header.size, eq std::mem::size_of::<SomeUserHeader>());
-        assert_that!(d.user_header.alignment, eq std::mem::align_of::<SomeUserHeader>());
+        assert_that!(d.user_header.size, eq core::mem::size_of::<SomeUserHeader>());
+        assert_that!(d.user_header.alignment, eq core::mem::align_of::<SomeUserHeader>());
         assert_that!(d.payload.variant, eq TypeVariant::FixedSize);
         assert_that!(d.payload.type_name, eq core::any::type_name::<PayloadType>());
-        assert_that!(d.payload.size, eq std::mem::size_of::<PayloadType>());
-        assert_that!(d.payload.alignment, eq std::mem::align_of::<PayloadType>());
+        assert_that!(d.payload.size, eq core::mem::size_of::<PayloadType>());
+        assert_that!(d.payload.alignment, eq core::mem::align_of::<PayloadType>());
     }
 
     #[test]
@@ -855,16 +859,16 @@ mod service_publish_subscribe {
         let d = sut.static_config().message_type_details();
         assert_that!(d.header.variant, eq TypeVariant::FixedSize);
         assert_that!(d.header.type_name, eq core::any::type_name::<Header>());
-        assert_that!(d.header.size, eq std::mem::size_of::<Header>());
-        assert_that!(d.header.alignment, eq std::mem::align_of::<Header>());
+        assert_that!(d.header.size, eq core::mem::size_of::<Header>());
+        assert_that!(d.header.alignment, eq core::mem::align_of::<Header>());
         assert_that!(d.user_header.variant, eq TypeVariant::FixedSize);
         assert_that!(d.user_header.type_name, eq core::any::type_name::<()>());
-        assert_that!(d.user_header.size, eq std::mem::size_of::<()>());
-        assert_that!(d.user_header.alignment, eq std::mem::align_of::<()>());
+        assert_that!(d.user_header.size, eq core::mem::size_of::<()>());
+        assert_that!(d.user_header.alignment, eq core::mem::align_of::<()>());
         assert_that!(d.payload.variant, eq TypeVariant::Dynamic);
         assert_that!(d.payload.type_name, eq core::any::type_name::<PayloadType>());
-        assert_that!(d.payload.size, eq std::mem::size_of::<PayloadType>());
-        assert_that!(d.payload.alignment, eq std::mem::align_of::<PayloadType>());
+        assert_that!(d.payload.size, eq core::mem::size_of::<PayloadType>());
+        assert_that!(d.payload.alignment, eq core::mem::align_of::<PayloadType>());
     }
 
     #[test]
@@ -983,7 +987,6 @@ mod service_publish_subscribe {
 
         let subscriber = sut.subscriber_builder().create().unwrap();
         let publisher = sut2.publisher_builder().create().unwrap();
-        assert_that!(subscriber.update_connections(), is_ok);
 
         assert_that!(publisher.send_copy(1234), is_ok);
         assert_that!(publisher.send_copy(4567), is_ok);
@@ -1697,7 +1700,7 @@ mod service_publish_subscribe {
 
             let sample = sut_publisher.loan_uninit();
             assert_that!(sample, is_err);
-            assert_that!(sample.err().unwrap(), eq PublisherLoanError::ExceedsMaxLoanedSamples);
+            assert_that!(sample.err().unwrap(), eq LoanError::ExceedsMaxLoans);
 
             // cleanup
             borrowed_samples.clear();
@@ -2561,7 +2564,6 @@ mod service_publish_subscribe {
 
         let subscriber = sut.subscriber_builder().create().unwrap();
         let publisher = sut2.publisher_builder().create().unwrap();
-        assert_that!(subscriber.update_connections(), is_ok);
         let mut sample = publisher.loan().unwrap();
 
         for i in 0..1024 {
@@ -3004,7 +3006,7 @@ mod service_publish_subscribe {
 
         let sample = publisher.loan_slice(SLICE_SIZE + 1);
         assert_that!(sample, is_err);
-        assert_that!(sample.err(), eq Some(PublisherLoanError::ExceedsMaxLoanSize));
+        assert_that!(sample.err(), eq Some(LoanError::ExceedsMaxLoanSize));
     }
 
     fn send_and_receives_increasing_samples_works<Sut: Service>(
@@ -3198,6 +3200,250 @@ mod service_publish_subscribe {
         Sut: Service,
     >() {
         deliver_history_with_increasing_samples_works::<Sut>(AllocationStrategy::PowerOfTwo);
+    }
+
+    #[test]
+    fn does_not_leak_when_subscriber_has_smaller_buffer_size_than_history_size<Sut: Service>() {
+        let _watchdog = Watchdog::new();
+        const HISTORY_SIZE: usize = 1000;
+        const REPETITIONS: usize = 10;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<Sut>().unwrap();
+
+        let finish_setup = Barrier::new(2);
+        let start = Barrier::new(2);
+        let end = Barrier::new(2);
+
+        std::thread::scope(|s| {
+            let update_connection_thread = s.spawn(|| {
+                let service = node
+                    .service_builder(&service_name)
+                    .publish_subscribe::<usize>()
+                    .max_publishers(1)
+                    .max_subscribers(1)
+                    .subscriber_max_borrowed_samples(1)
+                    .history_size(HISTORY_SIZE)
+                    .subscriber_max_buffer_size(HISTORY_SIZE)
+                    .create()
+                    .unwrap();
+
+                let publisher = service
+                    .publisher_builder()
+                    .max_loaned_samples(1)
+                    .create()
+                    .unwrap();
+
+                for n in 0..HISTORY_SIZE {
+                    publisher.send_copy(n).unwrap();
+                }
+
+                finish_setup.wait();
+
+                for _ in 0..REPETITIONS {
+                    start.wait();
+
+                    publisher.update_connections().unwrap();
+
+                    end.wait();
+                }
+            });
+
+            let new_subscriber_thread = s.spawn(|| {
+                finish_setup.wait();
+
+                let service = node
+                    .service_builder(&service_name)
+                    .publish_subscribe::<usize>()
+                    .open()
+                    .unwrap();
+
+                for _ in 0..REPETITIONS {
+                    let subscriber = service
+                        .subscriber_builder()
+                        .buffer_size(1)
+                        .create()
+                        .unwrap();
+                    start.wait();
+
+                    let mut previous_value = 0;
+                    for _ in 0..HISTORY_SIZE {
+                        let sample = subscriber.receive().unwrap();
+                        if let Some(sample) = sample {
+                            assert_that!(*sample, ge previous_value);
+                            previous_value = *sample;
+                        }
+                    }
+
+                    end.wait();
+                }
+            });
+
+            update_connection_thread.join().unwrap();
+            new_subscriber_thread.join().unwrap();
+        });
+    }
+
+    #[test]
+    fn listing_all_publishers_works<S: Service>() {
+        const NUMBER_OF_PUBLISHERS: usize = 18;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut = node
+            .service_builder(&service_name)
+            .publish_subscribe::<u64>()
+            .max_publishers(NUMBER_OF_PUBLISHERS)
+            .create()
+            .unwrap();
+
+        let mut publishers = vec![];
+
+        for _ in 0..NUMBER_OF_PUBLISHERS {
+            publishers.push(sut.publisher_builder().create().unwrap());
+        }
+
+        let mut publisher_details = vec![];
+        sut.dynamic_config().list_publishers(|details| {
+            publisher_details.push(details.publisher_id);
+            CallbackProgression::Continue
+        });
+
+        assert_that!(publisher_details, len NUMBER_OF_PUBLISHERS);
+        for publisher in publishers {
+            assert_that!(publisher_details, contains publisher.id());
+        }
+    }
+
+    #[test]
+    fn listing_all_publishers_stops_on_request<S: Service>() {
+        const NUMBER_OF_PUBLISHERS: usize = 16;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut = node
+            .service_builder(&service_name)
+            .publish_subscribe::<u64>()
+            .max_publishers(NUMBER_OF_PUBLISHERS)
+            .create()
+            .unwrap();
+
+        let mut publishers = vec![];
+
+        for _ in 0..NUMBER_OF_PUBLISHERS {
+            publishers.push(sut.publisher_builder().create().unwrap());
+        }
+
+        let mut counter = 0;
+        sut.dynamic_config().list_publishers(|_| {
+            counter += 1;
+            CallbackProgression::Stop
+        });
+
+        assert_that!(counter, eq 1);
+    }
+
+    #[test]
+    fn listing_all_subscribers_works<S: Service>() {
+        const NUMBER_OF_SUBSCRIBERS: usize = 18;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut = node
+            .service_builder(&service_name)
+            .publish_subscribe::<u64>()
+            .max_subscribers(NUMBER_OF_SUBSCRIBERS)
+            .create()
+            .unwrap();
+
+        let mut subscribers = vec![];
+
+        for _ in 0..NUMBER_OF_SUBSCRIBERS {
+            subscribers.push(sut.subscriber_builder().create().unwrap());
+        }
+
+        let mut subscriber_details = vec![];
+        sut.dynamic_config().list_subscribers(|details| {
+            subscriber_details.push(details.subscriber_id);
+            CallbackProgression::Continue
+        });
+
+        assert_that!(subscriber_details, len NUMBER_OF_SUBSCRIBERS);
+        for subscriber in subscribers {
+            assert_that!(subscriber_details, contains subscriber.id());
+        }
+    }
+
+    #[test]
+    fn listing_all_subscribers_stops_on_request<S: Service>() {
+        const NUMBER_OF_SUBSCRIBERS: usize = 16;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let sut = node
+            .service_builder(&service_name)
+            .publish_subscribe::<u64>()
+            .max_subscribers(NUMBER_OF_SUBSCRIBERS)
+            .create()
+            .unwrap();
+
+        let mut subscribers = vec![];
+
+        for _ in 0..NUMBER_OF_SUBSCRIBERS {
+            subscribers.push(sut.subscriber_builder().create().unwrap());
+        }
+
+        let mut counter = 0;
+        sut.dynamic_config().list_subscribers(|_| {
+            counter += 1;
+            CallbackProgression::Stop
+        });
+
+        assert_that!(counter, eq 1);
+    }
+
+    #[test]
+    fn receive_does_not_return_error_when_pub_goes_out_of_scope_after_reallocation<S: Service>() {
+        const SLICE_MAX_LEN: usize = 1;
+        let service_name = generate_name();
+        let config = generate_isolated_config();
+        let node = NodeBuilder::new().config(&config).create::<S>().unwrap();
+
+        let service = node
+            .service_builder(&service_name)
+            .publish_subscribe::<[u8]>()
+            .create()
+            .unwrap();
+
+        let subscriber = service.subscriber_builder().create().unwrap();
+
+        let publisher = service
+            .publisher_builder()
+            .initial_max_slice_len(SLICE_MAX_LEN)
+            .allocation_strategy(AllocationStrategy::BestFit)
+            .create()
+            .unwrap();
+
+        // send and receive once so that the subscriber maps the data segment
+        let sample = publisher.loan_slice_uninit(SLICE_MAX_LEN).unwrap();
+        sample.write_from_fn(|i| i as u8).send().unwrap();
+
+        let recv_sample = subscriber.receive();
+        assert_that!(recv_sample, is_ok);
+
+        // publisher has to reallocate the data segment
+        let sample = publisher.loan_slice_uninit(SLICE_MAX_LEN + 4096).unwrap();
+        sample.write_from_fn(|i| i as u8).send().unwrap();
+        // publisher goes out of scope and closes the reallocated data segment as it was not yet mapped by the
+        // subscriber
+        drop(publisher);
+
+        let recv_res = subscriber.receive();
+        assert_that!(recv_res, is_ok);
     }
 
     #[instantiate_tests(<iceoryx2::service::ipc::Service>)]

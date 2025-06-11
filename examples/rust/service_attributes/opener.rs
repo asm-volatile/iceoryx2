@@ -15,7 +15,8 @@ use iceoryx2::prelude::*;
 
 const CYCLE_TIME: Duration = Duration::from_secs(1);
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn core::error::Error>> {
+    set_log_level_from_env_or(LogLevel::Info);
     let node = NodeBuilder::new().create::<ipc::Service>()?;
 
     let service = node
@@ -25,8 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // define attributes that the service requires
             // if no attributes are defined the service accepts any attribute
             &AttributeVerifier::new()
-                .require("camera_resolution", "1920x1080")
-                .require_key("dds_service_mapping"),
+                .require(&"camera_resolution".try_into()?, &"1920x1080".try_into()?)
+                .require_key(&"dds_service_mapping".try_into()?),
         )?;
 
     let subscriber = service.subscriber_builder().create()?;

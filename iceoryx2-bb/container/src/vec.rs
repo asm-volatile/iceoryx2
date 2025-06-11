@@ -71,7 +71,7 @@
 //! use iceoryx2_bb_container::vec::RelocatableVec;
 //! use iceoryx2_bb_elementary::bump_allocator::BumpAllocator;
 //! use iceoryx2_bb_elementary::relocatable_container::RelocatableContainer;
-//! use std::ptr::NonNull;
+//! use core::ptr::NonNull;
 //!
 //! const VEC_CAPACITY:usize = 12;
 //! const MEM_SIZE: usize = RelocatableVec::<u128>::const_memory_size(VEC_CAPACITY);
@@ -83,7 +83,7 @@
 //! unsafe { vec.init(&bump_allocator).expect("vec init failed") };
 //! ```
 
-use std::{
+use core::{
     alloc::Layout,
     marker::PhantomData,
     mem::MaybeUninit,
@@ -91,15 +91,16 @@ use std::{
     sync::atomic::Ordering,
 };
 
-use iceoryx2_bb_elementary::generic_pointer::GenericPointer;
 use iceoryx2_bb_elementary::{
     bump_allocator::BumpAllocator, owning_pointer::GenericOwningPointer,
     relocatable_ptr::GenericRelocatablePointer,
 };
+
 use iceoryx2_bb_elementary::{
-    math::unaligned_mem_size, owning_pointer::OwningPointer, placement_default::PlacementDefault,
-    pointer_trait::PointerTrait, relocatable_container::RelocatableContainer,
-    relocatable_ptr::RelocatablePointer,
+    generic_pointer::GenericPointer, math::unaligned_mem_size, owning_pointer::OwningPointer,
+    placement_default::PlacementDefault, pointer_trait::PointerTrait,
+    relocatable_container::RelocatableContainer, relocatable_ptr::RelocatablePointer,
+    zero_copy_send::ZeroCopySend,
 };
 
 use iceoryx2_bb_log::{fail, fatal_panic};
@@ -134,7 +135,7 @@ pub mod details {
         fn drop(&mut self) {
             if self
                 .is_initialized
-                .load(std::sync::atomic::Ordering::Relaxed)
+                .load(core::sync::atomic::Ordering::Relaxed)
             {
                 unsafe { self.clear_impl() };
             }
@@ -162,12 +163,12 @@ pub mod details {
 
             self.data_ptr.init(fail!(from "Queue::init", when allocator
                  .allocate(Layout::from_size_align_unchecked(
-                     std::mem::size_of::<T>() * self.capacity,
-                     std::mem::align_of::<T>(),
+                     core::mem::size_of::<T>() * self.capacity,
+                     core::mem::align_of::<T>(),
                  )), "Failed to initialize queue since the allocation of the data memory failed."
             ));
             self.is_initialized
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+                .store(true, core::sync::atomic::Ordering::Relaxed);
 
             Ok(())
         }
@@ -182,19 +183,14 @@ pub mod details {
 
         fn deref(&self) -> &Self::Target {
             self.verify_init("deref()");
-            unsafe { core::slice::from_raw_parts((*self.data_ptr.as_ptr()).as_ptr(), self.len) }
+            unsafe { self.as_slice_impl() }
         }
     }
 
     impl<T, Ptr: GenericPointer> DerefMut for MetaVec<T, Ptr> {
         fn deref_mut(&mut self) -> &mut Self::Target {
             self.verify_init("deref_mut()");
-            unsafe {
-                core::slice::from_raw_parts_mut(
-                    (*self.data_ptr.as_mut_ptr()).as_mut_ptr(),
-                    self.len,
-                )
-            }
+            unsafe { self.as_mut_slice_impl() }
         }
     }
 
@@ -221,7 +217,7 @@ pub mod details {
         fn verify_init(&self, source: &str) {
             debug_assert!(
                 self.is_initialized
-                    .load(std::sync::atomic::Ordering::Relaxed),
+                    .load(core::sync::atomic::Ordering::Relaxed),
                 "From: MetaVec<{}>::{}, Undefined behavior - the object was not initialized with 'init' before.",
                 core::any::type_name::<T>(), source
             );
@@ -308,6 +304,17 @@ pub mod details {
             true
         }
 
+        unsafe fn remove_impl(&mut self, index: usize) -> T {
+            self.verify_init("remove()");
+            debug_assert!(index < self.len());
+
+            let ptr = self.as_mut_ptr().add(index);
+            let value = core::ptr::read(ptr);
+            core::ptr::copy(ptr.add(1), ptr, self.len - index - 1);
+            self.len -= 1;
+            value
+        }
+
         unsafe fn pop_impl(&mut self) -> Option<T> {
             if self.is_empty() {
                 return None;
@@ -324,7 +331,7 @@ pub mod details {
         }
 
         fn pop_unchecked(&mut self) -> T {
-            let value = std::mem::replace(
+            let value = core::mem::replace(
                 unsafe { &mut *self.data_ptr.as_mut_ptr().offset(self.len as isize - 1) },
                 MaybeUninit::uninit(),
             );
@@ -343,7 +350,7 @@ pub mod details {
     }
 
     impl<T> MetaVec<T, GenericOwningPointer> {
-        /// Creates a new [`Queue`] with the provided capacity
+        /// Creates a new [`Vec`] with the provided capacity
         pub fn new(capacity: usize) -> Self {
             Self {
                 data_ptr: OwningPointer::<MaybeUninit<T>>::new_with_alloc(capacity),
@@ -352,6 +359,16 @@ pub mod details {
                 is_initialized: IoxAtomicBool::new(true),
                 _phantom_data: PhantomData,
             }
+        }
+
+        /// Creates a new [`Vec`] with the provided capacity and fills it by
+        /// using the provided callback
+        pub fn from_fn<F: FnMut(usize) -> T>(capacity: usize, mut callback: F) -> Self {
+            let mut new_self = Self::new(capacity);
+            for n in 0..capacity {
+                new_self.push(callback(n));
+            }
+            new_self
         }
 
         /// Adds an element at the end of the vector. If the vector is full and the element cannot be
@@ -387,6 +404,11 @@ pub mod details {
             unsafe { self.pop_impl() }
         }
 
+        /// Removes the element at the provided index and returns it.
+        pub fn remove(&mut self, index: usize) -> T {
+            unsafe { self.remove_impl(index) }
+        }
+
         /// Removes all elements from the vector
         pub fn clear(&mut self) {
             unsafe { self.clear_impl() }
@@ -402,6 +424,8 @@ pub mod details {
             unsafe { self.as_mut_slice_impl() }
         }
     }
+
+    unsafe impl<T: ZeroCopySend> ZeroCopySend for MetaVec<T, GenericRelocatablePointer> {}
 
     impl<T> MetaVec<T, GenericRelocatablePointer> {
         /// Returns the required memory size for a vec with a specified capacity
@@ -467,6 +491,16 @@ pub mod details {
             self.pop_impl()
         }
 
+        /// Removes the element at the provided index and returns it.
+        ///
+        /// # Safety
+        ///
+        ///  * [`RelocatableVec::init()`] must be called once before
+        ///
+        pub unsafe fn remove(&mut self, index: usize) -> T {
+            unsafe { self.remove_impl(index) }
+        }
+
         /// Removes all elements from the vector
         ///
         /// # Safety
@@ -508,6 +542,8 @@ pub struct FixedSizeVec<T, const CAPACITY: usize> {
     _data: [MaybeUninit<T>; CAPACITY],
 }
 
+unsafe impl<T: ZeroCopySend, const CAPACITY: usize> ZeroCopySend for FixedSizeVec<T, CAPACITY> {}
+
 impl<'de, T: Serialize + Deserialize<'de>, const CAPACITY: usize> Serialize
     for FixedSizeVec<T, CAPACITY>
 {
@@ -528,7 +564,7 @@ impl<'de, T: Deserialize<'de>, const CAPACITY: usize> Visitor<'de>
 {
     type Value = FixedSizeVec<T, CAPACITY>;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
         let str = format!(
             "an array of at most {} elements of type {}",
             CAPACITY,
@@ -694,6 +730,11 @@ impl<T, const CAPACITY: usize> FixedSizeVec<T, CAPACITY> {
     /// it returns [`None`].
     pub fn pop(&mut self) -> Option<T> {
         unsafe { self.state.pop() }
+    }
+
+    /// Removes the element at the provided index and returns it.
+    pub fn remove(&mut self, index: usize) -> T {
+        unsafe { self.state.remove(index) }
     }
 
     /// Removes all elements from the vector

@@ -10,14 +10,22 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::alloc::Layout;
+use core::alloc::Layout;
 
-use iceoryx2_bb_elementary::math::align;
+use iceoryx2_bb_container::byte_string::FixedSizeByteString;
+use iceoryx2_bb_derive_macros::ZeroCopySend;
+use iceoryx2_bb_elementary::{math::align, zero_copy_send::ZeroCopySend};
+use iceoryx2_bb_log::fatal_panic;
 use serde::{Deserialize, Serialize};
+
+use crate::constants::MAX_TYPE_NAME_LENGTH;
 
 /// Defines if the type is a slice with a runtime-size ([`TypeVariant::Dynamic`])
 /// or if its a type that satisfies [`Sized`] ([`TypeVariant::FixedSize`]).
-#[derive(Default, Debug, Clone, Copy, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[repr(C)]
+#[derive(
+    Default, Debug, Clone, Copy, Eq, Hash, PartialEq, ZeroCopySend, Serialize, Deserialize,
+)]
 pub enum TypeVariant {
     #[default]
     /// A type notated by [`#[repr(C)]`](https://doc.rust-lang.org/reference/type-layout.html#reprc).
@@ -41,13 +49,17 @@ pub enum TypeVariant {
     Dynamic,
 }
 
+/// A fixed-size string type used to store type names.
+pub type TypeNameString = FixedSizeByteString<MAX_TYPE_NAME_LENGTH>;
+
 /// Contains all type details required to connect to a [`crate::service::Service`]
-#[derive(Default, Debug, Clone, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Eq, Hash, PartialEq, ZeroCopySend, Serialize, Deserialize)]
+#[repr(C)]
 pub struct TypeDetail {
     /// The [`TypeVariant`] of the type
     pub variant: TypeVariant,
-    /// Contains the output of [`core::any::type_name()`].
-    pub type_name: String,
+    /// Contains the name of the underlying type.
+    pub type_name: TypeNameString,
     /// The size of the underlying type calculated by [`core::mem::size_of`].
     pub size: usize,
     /// The ABI-required minimum alignment of the underlying type calculated by [`core::mem::align_of`].
@@ -57,10 +69,16 @@ pub struct TypeDetail {
 
 impl TypeDetail {
     #[doc(hidden)]
-    pub fn __internal_new<T>(variant: TypeVariant) -> Self {
+    pub fn __internal_new<T: ZeroCopySend>(variant: TypeVariant) -> Self {
         Self {
             variant,
-            type_name: core::any::type_name::<T>().to_string(),
+            type_name: unsafe {
+                fatal_panic!(
+                    from "TypeDetail::__internal_new::<T>()",
+                    when TypeNameString::try_from(T::type_name()),
+                    "Name of type T does not fit into fixed-size TypeNameString"
+                )
+            },
             size: core::mem::size_of::<T>(),
             alignment: core::mem::align_of::<T>(),
         }
@@ -68,7 +86,8 @@ impl TypeDetail {
 }
 
 /// Contains all type information to the header and payload type.
-#[derive(Default, Debug, Clone, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Eq, Hash, PartialEq, ZeroCopySend, Serialize, Deserialize)]
+#[repr(C)]
 pub struct MessageTypeDetails {
     /// The [`TypeDetail`] of the header of a message, the first iceoryx2 internal part.
     pub header: TypeDetail,
@@ -80,7 +99,9 @@ pub struct MessageTypeDetails {
 }
 
 impl MessageTypeDetails {
-    pub(crate) fn from<Header, UserHeader, Payload>(payload_variant: TypeVariant) -> Self {
+    pub(crate) fn from<Header: ZeroCopySend, UserHeader: ZeroCopySend, Payload: ZeroCopySend>(
+        payload_variant: TypeVariant,
+    ) -> Self {
         Self {
             header: TypeDetail::__internal_new::<Header>(TypeVariant::FixedSize),
             user_header: TypeDetail::__internal_new::<UserHeader>(TypeVariant::FixedSize),
@@ -132,6 +153,7 @@ impl MessageTypeDetails {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iceoryx2_bb_derive_macros::ZeroCopySend;
     use iceoryx2_bb_testing::assert_that;
 
     #[cfg(target_pointer_width = "32")]
@@ -141,6 +163,7 @@ mod tests {
 
     #[test]
     fn test_from() {
+        #[derive(ZeroCopySend)]
         #[repr(C)]
         struct MyPayload {
             _a: i32,
@@ -152,19 +175,19 @@ mod tests {
         let expected = MessageTypeDetails{
             header:  TypeDetail{
                 variant: TypeVariant::FixedSize,
-                type_name: "i32".to_string(),
+                type_name: "i32".try_into().unwrap(),
                 size: 4,
                 alignment: 4, // i32 uses 4 bytes, so its aliment is always 4 no matter x32 or x64.
             },
             user_header: TypeDetail{
                 variant: TypeVariant::FixedSize,
-                type_name: "i64".to_string(),
+                type_name: "i64".try_into().unwrap(),
                 size: 8,
                 alignment: ALIGNMENT,
             },
             payload: TypeDetail{
                 variant: TypeVariant::FixedSize,
-                type_name: "iceoryx2::service::static_config::message_type_details::tests::test_from::MyPayload".to_string(),
+                type_name: "iceoryx2::service::static_config::message_type_details::tests::test_from::MyPayload".try_into().unwrap(),
                 size: 16,
                 alignment: ALIGNMENT,
             },
@@ -175,19 +198,19 @@ mod tests {
         let expected = MessageTypeDetails {
             header: TypeDetail {
                 variant: TypeVariant::FixedSize,
-                type_name: "i32".to_string(),
+                type_name: "i32".try_into().unwrap(),
                 size: 4,
                 alignment: 4,
             },
             user_header: TypeDetail {
                 variant: TypeVariant::FixedSize,
-                type_name: "bool".to_string(),
+                type_name: "bool".try_into().unwrap(),
                 size: 1,
                 alignment: 1,
             },
             payload: TypeDetail {
                 variant: TypeVariant::Dynamic,
-                type_name: "i64".to_string(),
+                type_name: "i64".try_into().unwrap(),
                 size: 8,
                 alignment: ALIGNMENT,
             },
@@ -294,6 +317,7 @@ mod tests {
         let expected = 32;
         assert_that!(sut.size(), eq expected);
 
+        #[derive(ZeroCopySend)]
         #[repr(C)]
         struct Demo {
             _b: bool,
@@ -332,19 +356,19 @@ mod tests {
         let right = MessageTypeDetails {
             header: TypeDetail {
                 variant: TypeVariant::FixedSize,
-                type_name: "i64".to_string(),
+                type_name: "i64".try_into().unwrap(),
                 size: 8,
                 alignment: ALIGNMENT,
             },
             user_header: TypeDetail {
                 variant: TypeVariant::FixedSize,
-                type_name: "i64".to_string(),
+                type_name: "i64".try_into().unwrap(),
                 size: 8,
                 alignment: 2 * ALIGNMENT,
             },
             payload: TypeDetail {
                 variant: TypeVariant::FixedSize,
-                type_name: "i64".to_string(),
+                type_name: "i64".try_into().unwrap(),
                 size: 8,
                 alignment: 2 * ALIGNMENT,
             },
@@ -367,19 +391,19 @@ mod tests {
         let right = MessageTypeDetails {
             header: TypeDetail {
                 variant: TypeVariant::FixedSize,
-                type_name: "i64".to_string(),
+                type_name: "i64".try_into().unwrap(),
                 size: 8,
                 alignment: ALIGNMENT,
             },
             user_header: TypeDetail {
                 variant: TypeVariant::FixedSize,
-                type_name: "i64".to_string(),
+                type_name: "i64".try_into().unwrap(),
                 size: 8,
                 alignment: 2 * ALIGNMENT,
             },
             payload: TypeDetail {
                 variant: TypeVariant::FixedSize,
-                type_name: "i64".to_string(),
+                type_name: "i64".try_into().unwrap(),
                 size: 8,
                 alignment: 2 * ALIGNMENT,
             },

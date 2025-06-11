@@ -29,15 +29,17 @@ namespace {
 
 TEST(EnumConversionTest, config_creation_into_c_str) {
     using Sut = iox2::ConfigCreationError;
-    ASSERT_GT(strlen(iox::into<const char*>(Sut::FailedToOpenConfigFile)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::UnableToDeserializeContents)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::FailedToReadConfigFileContents)), 1U);
+    ASSERT_GT(strlen(iox::into<const char*>(Sut::InsufficientPermissions)), 1U);
+    ASSERT_GT(strlen(iox::into<const char*>(Sut::ConfigFileDoesNotExist)), 1U);
+    ASSERT_GT(strlen(iox::into<const char*>(Sut::UnableToOpenConfigFile)), 1U);
 }
 
 TEST(EnumConversionTest, connection_failure_into_c_str) {
     using Sut = iox2::ConnectionFailure;
     ASSERT_GT(strlen(iox::into<const char*>(Sut::FailedToEstablishConnection)), 1U);
-    ASSERT_GT(strlen(iox::into<const char*>(Sut::UnableToMapPublishersDataSegment)), 1U);
+    ASSERT_GT(strlen(iox::into<const char*>(Sut::UnableToMapSendersDataSegment)), 1U);
 }
 
 TEST(EnumConversionTest, listener_create_into_c_str) {
@@ -89,7 +91,7 @@ TEST(EnumConversionTest, publisher_create_into_c_str) {
 }
 
 TEST(EnumConversionTest, publisher_loan_into_c_str) {
-    using Sut = iox2::PublisherLoanError;
+    using Sut = iox2::LoanError;
     ASSERT_GT(strlen(iox::into<const char*>(Sut::OutOfMemory)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::ExceedsMaxLoanedSamples)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::ExceedsMaxLoanSize)), 1U);
@@ -97,11 +99,11 @@ TEST(EnumConversionTest, publisher_loan_into_c_str) {
 }
 
 TEST(EnumConversionTest, publisher_send_into_c_str) {
-    using Sut = iox2::PublisherSendError;
-    ASSERT_GT(strlen(iox::into<const char*>(Sut::ConnectionBrokenSincePublisherNoLongerExists)), 1U);
+    using Sut = iox2::SendError;
+    ASSERT_GT(strlen(iox::into<const char*>(Sut::ConnectionBrokenSinceSenderNoLongerExists)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::ConnectionCorrupted)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::LoanErrorOutOfMemory)), 1U);
-    ASSERT_GT(strlen(iox::into<const char*>(Sut::LoanErrorExceedsMaxLoanedSamples)), 1U);
+    ASSERT_GT(strlen(iox::into<const char*>(Sut::LoanErrorExceedsMaxLoans)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::LoanErrorExceedsMaxLoanSize)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::LoanErrorInternalFailure)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::ConnectionError)), 1U);
@@ -238,10 +240,10 @@ TEST(EnumConversionTest, service_list_into_c_str) {
 }
 
 TEST(EnumConversionTest, subscriber_receive_into_c_str) {
-    using Sut = iox2::SubscriberReceiveError;
-    ASSERT_GT(strlen(iox::into<const char*>(Sut::ExceedsMaxBorrowedSamples)), 1U);
+    using Sut = iox2::ReceiveError;
+    ASSERT_GT(strlen(iox::into<const char*>(Sut::ExceedsMaxBorrows)), 1U);
     ASSERT_GT(strlen(iox::into<const char*>(Sut::FailedToEstablishConnection)), 1U);
-    ASSERT_GT(strlen(iox::into<const char*>(Sut::UnableToMapPublishersDataSegment)), 1U);
+    ASSERT_GT(strlen(iox::into<const char*>(Sut::UnableToMapSendersDataSegment)), 1U);
 }
 
 TEST(EnumConversionTest, subscriber_create_into_c_str) {

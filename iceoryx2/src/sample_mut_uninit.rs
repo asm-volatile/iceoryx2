@@ -16,7 +16,7 @@
 //!
 //! ```
 //! use iceoryx2::prelude::*;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! # let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! #
 //! # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -42,7 +42,7 @@
 //!
 //! ```
 //! use iceoryx2::prelude::*;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! # let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! #
 //! # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -69,7 +69,7 @@
 //!
 //! ```
 //! use iceoryx2::prelude::*;
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! # let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! #
 //! # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -90,12 +90,16 @@
 //! # }
 //! ```
 
-use std::{fmt::Debug, mem::MaybeUninit, sync::Arc};
+use core::{fmt::Debug, mem::MaybeUninit};
 
+extern crate alloc;
+use alloc::sync::Arc;
+
+use iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend;
 use iceoryx2_cal::shm_allocator::PointerOffset;
 
 use crate::{
-    port::publisher::PublisherBackend, raw_sample::RawSampleMut, sample_mut::SampleMut,
+    port::publisher::PublisherSharedState, raw_sample::RawSampleMut, sample_mut::SampleMut,
     service::header::publish_subscribe::Header,
 };
 
@@ -113,12 +117,20 @@ use crate::{
 /// [`crate::port::publisher::Publisher`] is not thread-safe!
 ///
 /// The generic parameter `Payload` is actually [`core::mem::MaybeUninit<Payload>`].
-pub struct SampleMutUninit<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader> {
+#[repr(transparent)]
+pub struct SampleMutUninit<
+    Service: crate::service::Service,
+    Payload: Debug + ZeroCopySend + ?Sized,
+    UserHeader: ZeroCopySend,
+> {
     sample: SampleMut<Service, Payload, UserHeader>,
 }
 
-impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader>
-    SampleMutUninit<Service, Payload, UserHeader>
+impl<
+        Service: crate::service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: ZeroCopySend,
+    > SampleMutUninit<Service, Payload, UserHeader>
 {
     /// Returns a reference to the header of the sample.
     ///
@@ -127,7 +139,7 @@ impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader>
     /// ```
     /// use iceoryx2::prelude::*;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -152,7 +164,7 @@ impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader>
     /// ```
     /// use iceoryx2::prelude::*;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -178,7 +190,7 @@ impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader>
     /// ```
     /// use iceoryx2::prelude::*;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -208,7 +220,7 @@ impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader>
     /// ```
     /// use iceoryx2::prelude::*;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -238,7 +250,7 @@ impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader>
     /// ```
     /// use iceoryx2::prelude::*;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -257,18 +269,18 @@ impl<Service: crate::service::Service, Payload: Debug + ?Sized, UserHeader>
     }
 }
 
-impl<Service: crate::service::Service, Payload: Debug, UserHeader>
+impl<Service: crate::service::Service, Payload: Debug + ZeroCopySend, UserHeader: ZeroCopySend>
     SampleMutUninit<Service, MaybeUninit<Payload>, UserHeader>
 {
     pub(crate) fn new(
-        publisher_backend: &Arc<PublisherBackend<Service>>,
+        publisher_shared_state: &Arc<PublisherSharedState<Service>>,
         ptr: RawSampleMut<Header, UserHeader, MaybeUninit<Payload>>,
         offset_to_chunk: PointerOffset,
         sample_size: usize,
     ) -> Self {
         Self {
             sample: SampleMut {
-                publisher_backend: Arc::clone(publisher_backend),
+                publisher_shared_state: Arc::clone(publisher_shared_state),
                 ptr,
                 offset_to_chunk,
                 sample_size,
@@ -282,7 +294,7 @@ impl<Service: crate::service::Service, Payload: Debug, UserHeader>
     ///
     /// ```
     /// use iceoryx2::prelude::*;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -315,7 +327,7 @@ impl<Service: crate::service::Service, Payload: Debug, UserHeader>
     ///
     /// ```
     /// use iceoryx2::prelude::*;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -335,22 +347,22 @@ impl<Service: crate::service::Service, Payload: Debug, UserHeader>
     /// ```
     pub unsafe fn assume_init(self) -> SampleMut<Service, Payload, UserHeader> {
         // the transmute is not nice but safe since MaybeUninit is #[repr(transparent)] to the inner type
-        std::mem::transmute(self.sample)
+        core::mem::transmute(self.sample)
     }
 }
 
-impl<Service: crate::service::Service, Payload: Debug, UserHeader>
+impl<Service: crate::service::Service, Payload: Debug + ZeroCopySend, UserHeader: ZeroCopySend>
     SampleMutUninit<Service, [MaybeUninit<Payload>], UserHeader>
 {
     pub(crate) fn new(
-        publisher_backend: &Arc<PublisherBackend<Service>>,
+        publisher_shared_state: &Arc<PublisherSharedState<Service>>,
         ptr: RawSampleMut<Header, UserHeader, [MaybeUninit<Payload>]>,
         offset_to_chunk: PointerOffset,
         sample_size: usize,
     ) -> Self {
         Self {
             sample: SampleMut {
-                publisher_backend: Arc::clone(publisher_backend),
+                publisher_shared_state: Arc::clone(publisher_shared_state),
                 ptr,
                 offset_to_chunk,
                 sample_size,
@@ -371,7 +383,7 @@ impl<Service: crate::service::Service, Payload: Debug, UserHeader>
     /// use iceoryx2::prelude::*;
     /// use core::mem::MaybeUninit;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -396,7 +408,7 @@ impl<Service: crate::service::Service, Payload: Debug, UserHeader>
     /// ```
     pub unsafe fn assume_init(self) -> SampleMut<Service, [Payload], UserHeader> {
         // the transmute is not nice but safe since MaybeUninit is #[repr(transparent)] to the inner type
-        std::mem::transmute(self.sample)
+        core::mem::transmute(self.sample)
     }
 
     /// Writes the payload to the sample and labels the sample as initialized
@@ -405,7 +417,7 @@ impl<Service: crate::service::Service, Payload: Debug, UserHeader>
     ///
     /// ```
     /// use iceoryx2::prelude::*;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -436,8 +448,11 @@ impl<Service: crate::service::Service, Payload: Debug, UserHeader>
     }
 }
 
-impl<Service: crate::service::Service, Payload: Debug + Copy, UserHeader>
-    SampleMutUninit<Service, [MaybeUninit<Payload>], UserHeader>
+impl<
+        Service: crate::service::Service,
+        Payload: Debug + Copy + ZeroCopySend,
+        UserHeader: ZeroCopySend,
+    > SampleMutUninit<Service, [MaybeUninit<Payload>], UserHeader>
 {
     /// Writes the payload by mem copying the provided slice into the [`SampleMutUninit`].
     ///
@@ -445,7 +460,7 @@ impl<Service: crate::service::Service, Payload: Debug + Copy, UserHeader>
     ///
     /// ```
     /// use iceoryx2::prelude::*;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)

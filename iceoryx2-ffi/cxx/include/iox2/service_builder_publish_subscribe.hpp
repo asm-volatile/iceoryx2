@@ -15,18 +15,17 @@
 
 #include "iox/builder_addendum.hpp"
 #include "iox/expected.hpp"
+#include "iox/layout.hpp"
 #include "iox2/attribute_specifier.hpp"
 #include "iox2/attribute_verifier.hpp"
 #include "iox2/internal/iceoryx2.hpp"
+#include "iox2/internal/service_builder_internal.hpp"
 #include "iox2/payload_info.hpp"
 #include "iox2/port_factory_publish_subscribe.hpp"
 #include "iox2/service_builder_publish_subscribe_error.hpp"
 #include "iox2/service_type.hpp"
 
-#include <typeinfo>
-
 namespace iox2 {
-
 /// Builder to create new [`MessagingPattern::PublishSubscribe`] based [`Service`]s
 template <typename Payload, typename UserHeader, ServiceType S>
 class ServiceBuilderPublishSubscribe {
@@ -139,7 +138,7 @@ inline void ServiceBuilderPublishSubscribe<Payload, UserHeader, S>::set_paramete
     auto type_variant = iox::IsSlice<Payload>::VALUE ? iox2_type_variant_e_DYNAMIC : iox2_type_variant_e_FIXED_SIZE;
 
     // payload type details
-    const auto* payload_type_name = typeid(ValueType).name();
+    const auto* payload_type_name = internal::get_payload_type_name<Payload>();
     const auto payload_type_name_len = strlen(payload_type_name);
     const auto payload_type_size = sizeof(ValueType);
     const auto payload_type_align = alignof(ValueType);
@@ -153,17 +152,18 @@ inline void ServiceBuilderPublishSubscribe<Payload, UserHeader, S>::set_paramete
 
     // user header type details
     const auto header_layout = iox::Layout::from<UserHeader>();
-    const auto* user_header_type_name = typeid(UserHeader).name();
+    const auto* user_header_type_name = internal::get_user_header_type_name<UserHeader>();
     const auto user_header_type_name_len = strlen(user_header_type_name);
     const auto user_header_type_size = header_layout.size();
     const auto user_header_type_align = header_layout.alignment();
 
-    const auto user_header_result = iox2_service_builder_pub_sub_set_user_header_type_details(&m_handle,
-                                                                                              type_variant,
-                                                                                              user_header_type_name,
-                                                                                              user_header_type_name_len,
-                                                                                              user_header_type_size,
-                                                                                              user_header_type_align);
+    const auto user_header_result =
+        iox2_service_builder_pub_sub_set_user_header_type_details(&m_handle,
+                                                                  iox2_type_variant_e_FIXED_SIZE,
+                                                                  user_header_type_name,
+                                                                  user_header_type_name_len,
+                                                                  user_header_type_size,
+                                                                  user_header_type_align);
 
     if (user_header_result != IOX2_OK) {
         IOX_PANIC("This should never happen! Implementation failure while setting the User-Header-Type.");

@@ -13,7 +13,7 @@
 //! [CommunicationChannel] based on [`UnixDatagramSender`] & [`UnixDatagramSender`]. Can send and
 //! receive data without restrictions.
 
-use std::{fmt::Debug, marker::PhantomData, mem::MaybeUninit};
+use core::{fmt::Debug, marker::PhantomData, mem::MaybeUninit};
 
 use iceoryx2_bb_log::{fail, fatal_panic};
 use iceoryx2_bb_posix::{
@@ -27,7 +27,7 @@ use crate::static_storage::file::{
     NamedConceptRemoveError,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Configuration {
     suffix: FileName,
     prefix: FileName,
@@ -46,7 +46,7 @@ impl Default for Configuration {
 
 impl NamedConceptConfiguration for Configuration {
     fn prefix(mut self, value: &FileName) -> Self {
-        self.prefix = *value;
+        self.prefix = value.clone();
         self
     }
 
@@ -55,12 +55,12 @@ impl NamedConceptConfiguration for Configuration {
     }
 
     fn suffix(mut self, value: &FileName) -> Self {
-        self.suffix = *value;
+        self.suffix = value.clone();
         self
     }
 
     fn path_hint(mut self, value: &Path) -> Self {
-        self.path_hint = *value;
+        self.path_hint = value.clone();
         self
     }
 
@@ -182,7 +182,7 @@ pub struct Creator<T: Copy + Debug> {
 impl<T: Copy + Debug> NamedConceptBuilder<Channel<T>> for Creator<T> {
     fn new(channel_name: &FileName) -> Self {
         Self {
-            channel_name: *channel_name,
+            channel_name: channel_name.clone(),
             enable_safe_overflow: false,
             buffer_size: DEFAULT_RECEIVER_BUFFER_SIZE,
             config: Configuration::default(),
@@ -191,7 +191,7 @@ impl<T: Copy + Debug> NamedConceptBuilder<Channel<T>> for Creator<T> {
     }
 
     fn config(mut self, config: &Configuration) -> Self {
-        self.config = *config;
+        self.config = config.clone();
         self
     }
 }
@@ -284,14 +284,14 @@ impl<T: Copy + Debug> Connector<T> {
 impl<T: Copy + Debug> NamedConceptBuilder<Channel<T>> for Connector<T> {
     fn new(channel_name: &FileName) -> Self {
         Self {
-            channel_name: *channel_name,
+            channel_name: channel_name.clone(),
             config: Configuration::default(),
             _phantom_data: PhantomData,
         }
     }
 
     fn config(mut self, config: &Configuration) -> Self {
-        self.config = *config;
+        self.config = config.clone();
         self
     }
 }
@@ -362,7 +362,7 @@ impl<T: Copy + Debug> CommunicationChannelSender<T> for Sender<T> {
     fn try_send(&self, data: &T) -> Result<Option<T>, CommunicationChannelSendError> {
         let msg = "Unable to try send data";
         let result = self.sender.try_send(unsafe {
-            std::slice::from_raw_parts((data as *const T) as *const u8, std::mem::size_of::<T>())
+            core::slice::from_raw_parts((data as *const T) as *const u8, core::mem::size_of::<T>())
         });
 
         match result {
@@ -373,7 +373,7 @@ impl<T: Copy + Debug> CommunicationChannelSender<T> for Sender<T> {
             Err(UnixDatagramSendError::MessageTooLarge) => {
                 fail!(from self, with CommunicationChannelSendError::MessageTooLarge,
                     "{} since the size ({} bytes) of the type \"{}\" is too large.",
-                    msg, std::mem::size_of::<T>(), std::any::type_name::<T>());
+                    msg, core::mem::size_of::<T>(), core::any::type_name::<T>());
             }
             Err(UnixDatagramSendError::ConnectionReset)
             | Err(UnixDatagramSendError::NotConnected) => {
@@ -421,14 +421,14 @@ impl<T: Copy + Debug> CommunicationChannelReceiver<T> for Receiver<T> {
         let msg = "Unable to receive data";
         let mut data = MaybeUninit::<T>::uninit();
         match self.receiver.try_receive(unsafe {
-            std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, std::mem::size_of::<T>())
+            core::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, core::mem::size_of::<T>())
         }) {
             Ok(0) => Ok(None),
             Ok(received_bytes) => {
-                if received_bytes != std::mem::size_of::<T>() as u64 {
+                if received_bytes != core::mem::size_of::<T>() as u64 {
                     fail!(from self, with CommunicationChannelReceiveError::MessageCorrupt,
                     "The received message is corrupted. Expected to receive {} bytes but got {} bytes.",
-                    std::mem::size_of::<T>(), received_bytes );
+                    core::mem::size_of::<T>(), received_bytes );
                 }
                 Ok(Some(unsafe { data.assume_init() }))
             }

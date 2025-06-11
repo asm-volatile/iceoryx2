@@ -10,7 +10,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::time::Duration;
+use core::time::Duration;
 
 use iceoryx2::prelude::*;
 use iceoryx2_bb_container::{
@@ -19,7 +19,7 @@ use iceoryx2_bb_container::{
 
 // For both data types we derive from PlacementDefault to allow in memory initialization
 // without any copy. Avoids stack overflows when data type is larger than the available stack.
-#[derive(Debug, Default, PlacementDefault)]
+#[derive(Debug, Default, PlacementDefault, ZeroCopySend)]
 #[repr(C)]
 pub struct ComplexData {
     name: FixedSizeByteString<4>,
@@ -28,7 +28,7 @@ pub struct ComplexData {
 
 // For both data types we derive from PlacementDefault to allow in memory initialization
 // without any copy. Avoids stack overflows when data type is larger than the available stack.
-#[derive(Debug, Default, PlacementDefault)]
+#[derive(Debug, Default, PlacementDefault, ZeroCopySend)]
 #[repr(C)]
 pub struct ComplexDataType {
     plain_old_data: u64,
@@ -40,7 +40,8 @@ pub struct ComplexDataType {
 
 const CYCLE_TIME: Duration = Duration::from_secs(1);
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn core::error::Error>> {
+    set_log_level_from_env_or(LogLevel::Info);
     let node = NodeBuilder::new().create::<ipc::Service>()?;
 
     let service = node

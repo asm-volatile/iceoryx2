@@ -19,6 +19,7 @@
 //!
 //! ```
 //! pub use iceoryx2_bb_container::semantic_string::SemanticString;
+//! use iceoryx2_bb_derive_macros::ZeroCopySend;
 //!
 //! use core::hash::{Hash, Hasher};
 //! use iceoryx2_bb_container::semantic_string;
@@ -55,17 +56,17 @@
 //!   // callable shall convert the content to a uniform representation.
 //!   // Example: The path to `/tmp` can be also expressed as `/tmp/` or `////tmp////`
 //!   normalize: |this: &GroupName| {
-//!       *this
+//!       this.clone()
 //!   }
 //! }
 //! ```
 
 use crate::byte_string::FixedSizeByteStringModificationError;
 use crate::byte_string::{as_escaped_string, strnlen, FixedSizeByteString};
+use core::fmt::{Debug, Display};
+use core::hash::Hash;
+use core::ops::Deref;
 use iceoryx2_bb_log::fail;
-use std::fmt::{Debug, Display};
-use std::hash::Hash;
-use std::ops::Deref;
 
 /// Failures that can occur when a [`SemanticString`] is created or modified
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -82,13 +83,13 @@ impl From<FixedSizeByteStringModificationError> for SemanticStringError {
     }
 }
 
-impl std::fmt::Display for SemanticStringError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for SemanticStringError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "SemanticStringError::{:?}", self)
     }
 }
 
-impl std::error::Error for SemanticStringError {}
+impl core::error::Error for SemanticStringError {}
 
 #[doc(hidden)]
 pub mod internal {
@@ -151,8 +152,8 @@ pub trait SemanticString<const CAPACITY: usize>:
     ///   * The contents must have a length that is less or equal CAPACITY
     ///   * The contents must not contain invalid UTF-8 characters
     ///
-    unsafe fn from_c_str(ptr: *const std::ffi::c_char) -> Result<Self, SemanticStringError> {
-        Self::new(std::slice::from_raw_parts(
+    unsafe fn from_c_str(ptr: *const core::ffi::c_char) -> Result<Self, SemanticStringError> {
+        Self::new(core::slice::from_raw_parts(
             ptr.cast(),
             strnlen(ptr, CAPACITY + 1),
         ))
@@ -164,7 +165,7 @@ pub trait SemanticString<const CAPACITY: usize>:
     }
 
     /// Returns a zero terminated slice of the underlying bytes
-    fn as_c_str(&self) -> *const std::ffi::c_char {
+    fn as_c_str(&self) -> *const core::ffi::c_char {
         self.as_string().as_c_str()
     }
 
@@ -283,7 +284,7 @@ pub trait SemanticString<const CAPACITY: usize>:
     /// Removes a range.
     /// If the removal would create an illegal content it fails.
     fn remove_range(&mut self, idx: usize, len: usize) -> Result<(), SemanticStringError> {
-        let mut temp = *self.as_string();
+        let mut temp = self.as_string().clone();
         temp.remove_range(idx, len);
         if Self::is_invalid_content(temp.as_bytes()) {
             fail!(from self, with SemanticStringError::InvalidContent,
@@ -298,7 +299,7 @@ pub trait SemanticString<const CAPACITY: usize>:
     /// Removes all bytes which satisfy the provided clojure f.
     /// If the removal would create an illegal content it fails.
     fn retain<F: FnMut(u8) -> bool>(&mut self, f: F) -> Result<(), SemanticStringError> {
-        let mut temp = *self.as_string();
+        let mut temp = self.as_string().clone();
         let f = temp.retain_impl(f);
 
         if Self::is_invalid_content(temp.as_bytes()) {
@@ -315,7 +316,7 @@ pub trait SemanticString<const CAPACITY: usize>:
     /// to an invalid string content it fails and returns [`SemanticStringError::InvalidContent`].
     /// After a successful removal it returns true.
     fn strip_prefix(&mut self, bytes: &[u8]) -> Result<bool, SemanticStringError> {
-        let mut temp = *self.as_string();
+        let mut temp = self.as_string().clone();
         if !temp.strip_prefix(bytes) {
             return Ok(false);
         }
@@ -337,7 +338,7 @@ pub trait SemanticString<const CAPACITY: usize>:
     /// to an invalid string content it fails and returns [`SemanticStringError::InvalidContent`].
     /// After a successful removal it returns true.
     fn strip_suffix(&mut self, bytes: &[u8]) -> Result<bool, SemanticStringError> {
-        let mut temp = *self.as_string();
+        let mut temp = self.as_string().clone();
         if !temp.strip_suffix(bytes) {
             return Ok(false);
         }
@@ -357,7 +358,7 @@ pub trait SemanticString<const CAPACITY: usize>:
 
     /// Truncates the string to new_len.
     fn truncate(&mut self, new_len: usize) -> Result<(), SemanticStringError> {
-        let mut temp = *self.as_string();
+        let mut temp = self.as_string().clone();
         temp.truncate(new_len);
 
         if Self::is_invalid_content(temp.as_bytes()) {
@@ -390,7 +391,8 @@ macro_rules! semantic_string {
      /// representations like paths for instance (`/tmp` == `/tmp/`)
      normalize: $normalize:expr} => {
         $(#[$documentation])*
-        #[derive(Debug, Clone, Copy, Eq)]
+        #[repr(C)]
+        #[derive(Debug, Clone, Eq, PartialOrd, Ord, ZeroCopySend)]
         pub struct $string_name {
             value: iceoryx2_bb_container::byte_string::FixedSizeByteString<$capacity>
         }
@@ -403,7 +405,7 @@ macro_rules! semantic_string {
         impl<'de> serde::de::Visitor<'de> for VisitorType::$string_name {
             type Value = $string_name;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
                 formatter.write_str("a string containing the service name")
             }
 
@@ -432,7 +434,7 @@ macro_rules! semantic_string {
             where
                 S: serde::Serializer,
             {
-                serializer.serialize_str(std::str::from_utf8(self.as_bytes()).unwrap())
+                serializer.serialize_str(core::str::from_utf8(self.as_bytes()).unwrap())
             }
         }
         // END: serde
@@ -464,8 +466,8 @@ macro_rules! semantic_string {
             }
         }
 
-        impl std::fmt::Display for $string_name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        impl core::fmt::Display for $string_name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 std::write!(f, "{}", self.value)
             }
         }
@@ -490,7 +492,7 @@ macro_rules! semantic_string {
             }
         }
 
-        impl std::convert::TryFrom<&str> for $string_name {
+        impl core::convert::TryFrom<&str> for $string_name {
             type Error = iceoryx2_bb_container::semantic_string::SemanticStringError;
 
             fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -548,7 +550,18 @@ macro_rules! semantic_string {
             }
         }
 
-        impl std::ops::Deref for $string_name {
+        impl PartialEq<&str> for &$string_name {
+            fn eq(&self, other: &&str) -> bool {
+                let other = match $string_name::new(other.as_bytes()) {
+                    Ok(other) => other,
+                    Err(_) => return false,
+                };
+
+                **self == other
+            }
+        }
+
+        impl core::ops::Deref for $string_name {
             type Target = [u8];
 
             fn deref(&self) -> &Self::Target {

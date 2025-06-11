@@ -30,11 +30,13 @@ rust_library(
         "//iceoryx2-pal/configuration:iceoryx2-pal-configuration",
         "//iceoryx2-pal/concurrency-sync:iceoryx2-pal-concurrency-sync",
         "//iceoryx2-pal/posix:iceoryx2-pal-posix",
-        "@crate_index//:bitflags",
         "@crate_index//:enum-iterator",
         "@crate_index//:lazy_static",
         "@crate_index//:tiny-fn",
         "@crate_index//:serde",
+    ],
+    proc_macro_deps = [
+        "//iceoryx2-bb/derive-macros:iceoryx2-bb-derive-macros",
     ],
 )
 
@@ -48,8 +50,10 @@ rust_test_suite(
         "//iceoryx2-bb/log:iceoryx2-bb-log",
         "//iceoryx2-bb/system-types:iceoryx2-bb-system-types",
         "//iceoryx2-bb/testing:iceoryx2-bb-testing",
+        "//iceoryx2-pal/testing:iceoryx2-pal-testing",
         "//iceoryx2-pal/posix:iceoryx2-pal-posix",
         "//iceoryx2-pal/configuration:iceoryx2-pal-configuration",
+        "//iceoryx2-pal/concurrency-sync:iceoryx2-pal-concurrency-sync",
     ],
     tags = ["exclusive"],
     proc_macro_deps = [

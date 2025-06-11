@@ -15,7 +15,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! let event = node.service_builder(&"MyEventName".try_into()?)
 //!     .event()
@@ -30,6 +30,7 @@ use iceoryx2_bb_elementary::relocatable_container::RelocatableContainer;
 use iceoryx2_bb_lock_free::mpmc::{container::*, unique_index_set::ReleaseMode};
 use iceoryx2_bb_log::fatal_panic;
 use iceoryx2_bb_memory::bump_allocator::BumpAllocator;
+use iceoryx2_pal_concurrency_sync::iox_atomic::IoxAtomicU64;
 
 use crate::{
     node::NodeId,
@@ -52,20 +53,31 @@ pub(crate) struct DynamicConfigSettings {
 pub struct DynamicConfig {
     pub(crate) listeners: Container<ListenerDetails>,
     pub(crate) notifiers: Container<NotifierDetails>,
+    pub(crate) elapsed_time_since_last_notification: IoxAtomicU64,
 }
 
+/// Contains the communication settings of the connected
+/// [`Listener`](crate::port::listener::Listener).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ListenerDetails {
-    pub(crate) listener_id: UniqueListenerId,
-    pub(crate) node_id: NodeId,
+pub struct ListenerDetails {
+    /// The [`UniqueListenerId`] of the [`Listener`](crate::port::listener::Listener).
+    pub listener_id: UniqueListenerId,
+    /// The [`NodeId`] of the [`Node`](crate::node::Node) under which the
+    /// [`Listener`](crate::port::listener::Listener) was created.
+    pub node_id: NodeId,
 }
 
+/// Contains the communication settings of the connected
+/// [`Notifier`](crate::port::notifier::Notifier).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct NotifierDetails {
-    pub(crate) notifier_id: UniqueNotifierId,
-    pub(crate) node_id: NodeId,
+pub struct NotifierDetails {
+    /// The [`UniqueNotifierId`] of the [`Notifier`](crate::port::notifier::Notifier).
+    pub notifier_id: UniqueNotifierId,
+    /// The [`NodeId`] of the [`Node`](crate::node::Node) under which the
+    /// [`Notifier`](crate::port::notifier::Notifier) was created.
+    pub node_id: NodeId,
 }
 
 impl DynamicConfig {
@@ -73,6 +85,7 @@ impl DynamicConfig {
         Self {
             listeners: unsafe { Container::new_uninit(config.number_of_listeners) },
             notifiers: unsafe { Container::new_uninit(config.number_of_notifiers) },
+            elapsed_time_since_last_notification: IoxAtomicU64::new(0),
         }
     }
 
@@ -100,24 +113,30 @@ impl DynamicConfig {
         self.notifiers.len()
     }
 
-    #[doc(hidden)]
-    pub fn __internal_listener_owners<F: FnMut(&NodeId)>(&self, mut callback: F) {
+    /// Iterates over all [`Listener`](crate::port::listener::Listener)s and calls the
+    /// callback with the corresponding [`ListenerDetails`].
+    /// The callback shall return [`CallbackProgression::Continue`] when the iteration shall
+    /// continue otherwise [`CallbackProgression::Stop`].
+    pub fn list_listeners<F: FnMut(&ListenerDetails) -> CallbackProgression>(
+        &self,
+        mut callback: F,
+    ) {
         let state = unsafe { self.listeners.get_state() };
 
-        state.for_each(|_, details| {
-            callback(&details.node_id);
-            CallbackProgression::Continue
-        });
+        state.for_each(|_, details| callback(details));
     }
 
-    #[doc(hidden)]
-    pub fn __internal_notifier_owners<F: FnMut(&NodeId)>(&self, mut callback: F) {
+    /// Iterates over all [`Notifier`](crate::port::notifier::Notifier)s and calls the
+    /// callback with the corresponding [`NotifierDetails`].
+    /// The callback shall return [`CallbackProgression::Continue`] when the iteration shall
+    /// continue otherwise [`CallbackProgression::Stop`].
+    pub fn list_notifiers<F: FnMut(&NotifierDetails) -> CallbackProgression>(
+        &self,
+        mut callback: F,
+    ) {
         let state = unsafe { self.notifiers.get_state() };
 
-        state.for_each(|_, details| {
-            callback(&details.node_id);
-            CallbackProgression::Continue
-        });
+        state.for_each(|_, details| callback(details));
     }
 
     pub(crate) unsafe fn remove_dead_node_id<

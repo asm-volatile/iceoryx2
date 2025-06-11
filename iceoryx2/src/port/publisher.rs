@@ -17,7 +17,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
 //!     .publish_subscribe::<u64>()
@@ -60,7 +60,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //! let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
 //!     .publish_subscribe::<[usize]>()
@@ -102,46 +102,44 @@
 //! ```
 
 use super::details::data_segment::{DataSegment, DataSegmentType};
+use super::details::segment_state::SegmentState;
 use super::port_identifiers::UniquePublisherId;
-use super::UniqueSubscriberId;
-use crate::port::details::subscriber_connections::*;
+use super::{LoanError, SendError};
+use crate::port::details::sender::*;
 use crate::port::update_connections::{ConnectionFailure, UpdateConnections};
-use crate::port::DegrationAction;
+use crate::prelude::UnableToDeliverStrategy;
 use crate::raw_sample::RawSampleMut;
+use crate::sample_mut::SampleMut;
 use crate::sample_mut_uninit::SampleMutUninit;
-use crate::service::builder::publish_subscribe::CustomPayloadMarker;
-use crate::service::config_scheme::{connection_config, data_segment_config};
+use crate::service::builder::CustomPayloadMarker;
 use crate::service::dynamic_config::publish_subscribe::{PublisherDetails, SubscriberDetails};
 use crate::service::header::publish_subscribe::Header;
-use crate::service::naming_scheme::{
-    data_segment_name, extract_publisher_id_from_connection, extract_subscriber_id_from_connection,
-};
-use crate::service::port_factory::publisher::{LocalPublisherConfig, UnableToDeliverStrategy};
+use crate::service::naming_scheme::data_segment_name;
+use crate::service::port_factory::publisher::LocalPublisherConfig;
 use crate::service::static_config::message_type_details::TypeVariant;
-use crate::service::static_config::publish_subscribe::{self};
+use crate::service::static_config::publish_subscribe;
 use crate::service::{self, ServiceState};
-use crate::{config, sample_mut::SampleMut};
+use core::any::TypeId;
+use core::cell::UnsafeCell;
+use core::fmt::Debug;
+use core::sync::atomic::Ordering;
+use core::{marker::PhantomData, mem::MaybeUninit};
 use iceoryx2_bb_container::queue::Queue;
-use iceoryx2_bb_elementary::allocator::AllocationError;
+use iceoryx2_bb_elementary::cyclic_tagger::CyclicTagger;
+use iceoryx2_bb_elementary::zero_copy_send::ZeroCopySend;
 use iceoryx2_bb_elementary::CallbackProgression;
 use iceoryx2_bb_lock_free::mpmc::container::{ContainerHandle, ContainerState};
-use iceoryx2_bb_log::{debug, error, fail, fatal_panic, warn};
-use iceoryx2_bb_system_types::file_name::FileName;
+use iceoryx2_bb_log::{fail, warn};
+use iceoryx2_bb_posix::unique_system_id::UniqueSystemId;
 use iceoryx2_cal::dynamic_storage::DynamicStorage;
-use iceoryx2_cal::event::NamedConceptMgmt;
-use iceoryx2_cal::named_concept::{NamedConceptListError, NamedConceptRemoveError};
-use iceoryx2_cal::shared_memory::ShmPointer;
-use iceoryx2_cal::shm_allocator::{AllocationStrategy, PointerOffset, ShmAllocationError};
+use iceoryx2_cal::shm_allocator::{AllocationStrategy, PointerOffset};
 use iceoryx2_cal::zero_copy_connection::{
-    ZeroCopyConnection, ZeroCopyCreationError, ZeroCopySendError, ZeroCopySender,
+    ChannelId, ZeroCopyCreationError, ZeroCopyPortDetails, ZeroCopySender,
 };
-use iceoryx2_pal_concurrency_sync::iox_atomic::{IoxAtomicBool, IoxAtomicU64, IoxAtomicUsize};
-use std::any::TypeId;
-use std::cell::UnsafeCell;
-use std::fmt::Debug;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::{alloc::Layout, marker::PhantomData, mem::MaybeUninit};
+use iceoryx2_pal_concurrency_sync::iox_atomic::{IoxAtomicBool, IoxAtomicUsize};
+
+extern crate alloc;
+use alloc::sync::Arc;
 
 /// Defines a failure that can occur when a [`Publisher`] is created with
 /// [`crate::service::port_factory::publisher::PortFactoryPublisher`].
@@ -156,125 +154,13 @@ pub enum PublisherCreateError {
     UnableToCreateDataSegment,
 }
 
-impl std::fmt::Display for PublisherCreateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for PublisherCreateError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "PublisherCreateError::{:?}", self)
     }
 }
 
-impl std::error::Error for PublisherCreateError {}
-
-/// Defines a failure that can occur in [`Publisher::loan()`] and [`Publisher::loan_uninit()`]
-/// or is part of [`PublisherSendError`] emitted in [`Publisher::send_copy()`].
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
-pub enum PublisherLoanError {
-    /// The [`Publisher`]s data segment does not have any more memory left
-    OutOfMemory,
-    /// The maximum amount of [`SampleMut`]s a user can borrow with [`Publisher::loan()`] or
-    /// [`Publisher::loan_uninit()`] is
-    /// defined in [`crate::config::Config`]. When this is exceeded those calls will fail.
-    ExceedsMaxLoanedSamples,
-    /// The provided slice size exceeds the configured max slice size of the [`Publisher`].
-    /// To send a [`SampleMut`] with this size a new [`Publisher`] has to be created with
-    /// a [`crate::service::port_factory::publisher::PortFactoryPublisher::initial_max_slice_len()`]
-    /// greater or equal to the required len.
-    ExceedsMaxLoanSize,
-    /// Errors that indicate either an implementation issue or a wrongly configured system.
-    InternalFailure,
-}
-
-impl std::fmt::Display for PublisherLoanError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::write!(f, "PublisherLoanError::{:?}", self)
-    }
-}
-
-impl std::error::Error for PublisherLoanError {}
-
-/// Failure that can be emitted when a [`SampleMut`] is sent via [`SampleMut::send()`].
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub enum PublisherSendError {
-    /// [`SampleMut::send()`] was called but the corresponding [`Publisher`] went already out of
-    /// scope.
-    ConnectionBrokenSincePublisherNoLongerExists,
-    /// A connection between a [`Subscriber`](crate::port::subscriber::Subscriber) and a
-    /// [`Publisher`] is corrupted.
-    ConnectionCorrupted,
-    /// A failure occurred while acquiring memory for the payload
-    LoanError(PublisherLoanError),
-    /// A failure occurred while establishing a connection to a
-    /// [`Subscriber`](crate::port::subscriber::Subscriber)
-    ConnectionError(ConnectionFailure),
-}
-
-impl From<PublisherLoanError> for PublisherSendError {
-    fn from(value: PublisherLoanError) -> Self {
-        PublisherSendError::LoanError(value)
-    }
-}
-
-impl From<ConnectionFailure> for PublisherSendError {
-    fn from(value: ConnectionFailure) -> Self {
-        PublisherSendError::ConnectionError(value)
-    }
-}
-
-impl std::fmt::Display for PublisherSendError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::write!(f, "PublisherSendError::{:?}", self)
-    }
-}
-
-impl std::error::Error for PublisherSendError {}
-
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub(crate) enum RemovePubSubPortFromAllConnectionsError {
-    InsufficientPermissions,
-    InternalError,
-}
-
-#[derive(Debug)]
-struct SegmentState {
-    sample_reference_counter: Vec<IoxAtomicU64>,
-    payload_size: IoxAtomicUsize,
-}
-
-impl SegmentState {
-    fn new(number_of_samples: usize) -> Self {
-        let mut sample_reference_counter = Vec::with_capacity(number_of_samples);
-        for _ in 0..number_of_samples {
-            sample_reference_counter.push(IoxAtomicU64::new(0));
-        }
-
-        Self {
-            sample_reference_counter,
-            payload_size: IoxAtomicUsize::new(0),
-        }
-    }
-
-    fn set_payload_size(&self, value: usize) {
-        self.payload_size.store(value, Ordering::Relaxed);
-    }
-
-    fn payload_size(&self) -> usize {
-        self.payload_size.load(Ordering::Relaxed)
-    }
-
-    fn sample_index(&self, distance_to_chunk: usize) -> usize {
-        debug_assert!(distance_to_chunk % self.payload_size() == 0);
-        distance_to_chunk / self.payload_size()
-    }
-
-    fn borrow_sample(&self, distance_to_chunk: usize) -> u64 {
-        self.sample_reference_counter[self.sample_index(distance_to_chunk)]
-            .fetch_add(1, Ordering::Relaxed)
-    }
-
-    fn release_sample(&self, distance_to_chunk: usize) -> u64 {
-        self.sample_reference_counter[self.sample_index(distance_to_chunk)]
-            .fetch_sub(1, Ordering::Relaxed)
-    }
-}
+impl core::error::Error for PublisherCreateError {}
 
 #[derive(Debug, Clone, Copy)]
 struct OffsetAndSize {
@@ -283,253 +169,61 @@ struct OffsetAndSize {
 }
 
 #[derive(Debug)]
-struct AllocationPair {
-    shm_pointer: ShmPointer,
-    sample_size: usize,
-}
-
-#[derive(Debug)]
-pub(crate) struct PublisherBackend<Service: service::Service> {
-    segment_states: Vec<SegmentState>,
-    data_segment: DataSegment<Service>,
-    port_id: UniquePublisherId,
+pub(crate) struct PublisherSharedState<Service: service::Service> {
     config: LocalPublisherConfig,
     service_state: Arc<ServiceState<Service>>,
 
-    subscriber_connections: SubscriberConnections<Service>,
+    pub(crate) sender: Sender<Service>,
     subscriber_list_state: UnsafeCell<ContainerState<SubscriberDetails>>,
     history: Option<UnsafeCell<Queue<OffsetAndSize>>>,
-    static_config: crate::service::static_config::StaticConfig,
-    loan_counter: IoxAtomicUsize,
     is_active: IoxAtomicBool,
 }
 
-impl<Service: service::Service> PublisherBackend<Service> {
-    fn allocate(&self, layout: Layout) -> Result<AllocationPair, ShmAllocationError> {
-        self.retrieve_returned_samples();
-
-        let msg = "Unable to allocate Sample";
-        let shm_pointer = self.data_segment.allocate(layout)?;
-        let (ref_count, sample_size) = self.borrow_sample(shm_pointer.offset);
-        if ref_count != 0 {
-            fatal_panic!(from self,
-                "{} since the allocated sample is already in use! This should never happen!", msg);
-        }
-
-        Ok(AllocationPair {
-            shm_pointer,
-            sample_size,
-        })
-    }
-
-    fn borrow_sample(&self, offset: PointerOffset) -> (u64, usize) {
-        let segment_id = offset.segment_id();
-        let segment_state = &self.segment_states[segment_id.value() as usize];
-        let mut payload_size = segment_state.payload_size();
-        if segment_state.payload_size() == 0 {
-            payload_size = self.data_segment.bucket_size(segment_id);
-            segment_state.set_payload_size(payload_size);
-        }
-        (segment_state.borrow_sample(offset.offset()), payload_size)
-    }
-
-    fn release_sample(&self, offset: PointerOffset) {
-        if self.segment_states[offset.segment_id().value() as usize].release_sample(offset.offset())
-            == 1
-        {
-            unsafe {
-                self.data_segment.deallocate_bucket(offset);
-            }
-        }
-    }
-
-    fn retrieve_returned_samples(&self) {
-        for i in 0..self.subscriber_connections.len() {
-            if let Some(ref connection) = self.subscriber_connections.get(i) {
-                loop {
-                    match connection.sender.reclaim() {
-                        Ok(Some(ptr_dist)) => {
-                            self.release_sample(ptr_dist);
-                        }
-                        Ok(None) => break,
-                        Err(e) => {
-                            warn!(from self, "Unable to reclaim samples from connection {:?} due to {:?}. This may lead to a situation where no more samples will be delivered to this connection.", connection, e)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn remove_connection(&self, i: usize) {
-        if let Some(connection) = self.subscriber_connections.get(i) {
-            // # SAFETY: the receiver no longer exist, therefore we can
-            //           reacquire all delivered samples
-            unsafe {
-                connection
-                    .sender
-                    .acquire_used_offsets(|offset| self.release_sample(offset))
-            };
-
-            self.subscriber_connections.remove(i);
-        }
-    }
-
-    pub(crate) fn return_loaned_sample(&self, distance_to_chunk: PointerOffset) {
-        self.release_sample(distance_to_chunk);
-        self.loan_counter.fetch_sub(1, Ordering::Relaxed);
-    }
-
+impl<Service: service::Service> PublisherSharedState<Service> {
     fn add_sample_to_history(&self, offset: PointerOffset, sample_size: usize) {
         match &self.history {
             None => (),
             Some(history) => {
                 let history = unsafe { &mut *history.get() };
-                self.borrow_sample(offset);
+                self.sender.borrow_sample(offset);
                 match history.push_with_overflow(OffsetAndSize {
                     offset: offset.as_value(),
                     size: sample_size,
                 }) {
                     None => (),
-                    Some(old) => self.release_sample(PointerOffset::from_value(old.offset)),
+                    Some(old) => self
+                        .sender
+                        .release_sample(PointerOffset::from_value(old.offset)),
                 }
             }
         }
     }
 
-    fn deliver_sample(
-        &self,
-        offset: PointerOffset,
-        sample_size: usize,
-    ) -> Result<usize, PublisherSendError> {
-        self.retrieve_returned_samples();
-
-        let deliver_call = match self.config.unable_to_deliver_strategy {
-            UnableToDeliverStrategy::Block => {
-                <Service::Connection as ZeroCopyConnection>::Sender::blocking_send
-            }
-            UnableToDeliverStrategy::DiscardSample => {
-                <Service::Connection as ZeroCopyConnection>::Sender::try_send
-            }
-        };
-
-        let mut number_of_recipients = 0;
-        for i in 0..self.subscriber_connections.len() {
-            if let Some(ref connection) = self.subscriber_connections.get(i) {
-                match deliver_call(&connection.sender, offset, sample_size) {
-                    Err(ZeroCopySendError::ReceiveBufferFull)
-                    | Err(ZeroCopySendError::UsedChunkListFull) => {
-                        /* causes no problem
-                         *   blocking_send => can never happen
-                         *   try_send => we tried and expect that the buffer is full
-                         * */
-                    }
-                    Err(ZeroCopySendError::ConnectionCorrupted) => {
-                        match &self.config.degration_callback {
-                            Some(c) => match c.call(
-                                self.static_config.clone(),
-                                self.port_id,
-                                connection.subscriber_id,
-                            ) {
-                                DegrationAction::Ignore => (),
-                                DegrationAction::Warn => {
-                                    error!(from self,
-                                        "While delivering the sample: {:?} a corrupted connection was detected with subscriber {:?}.",
-                                        offset, connection.subscriber_id);
-                                }
-                                DegrationAction::Fail => {
-                                    fail!(from self, with PublisherSendError::ConnectionCorrupted,
-                                        "While delivering the sample: {:?} a corrupted connection was detected with subscriber {:?}.",
-                                        offset, connection.subscriber_id);
-                                }
-                            },
-                            None => {
-                                error!(from self,
-                                    "While delivering the sample: {:?} a corrupted connection was detected with subscriber {:?}.",
-                                    offset, connection.subscriber_id);
-                            }
-                        }
-                    }
-                    Ok(overflow) => {
-                        self.borrow_sample(offset);
-                        number_of_recipients += 1;
-
-                        if let Some(old) = overflow {
-                            self.release_sample(old)
-                        }
-                    }
-                }
-            }
-        }
-        Ok(number_of_recipients)
-    }
-
-    fn populate_subscriber_channels(&self) -> Result<(), ZeroCopyCreationError> {
-        let mut visited_indices = vec![];
-        visited_indices.resize(self.subscriber_connections.capacity(), None);
-
+    fn force_update_connections(&self) -> Result<(), ZeroCopyCreationError> {
+        let mut result = Ok(());
+        self.sender.start_update_connection_cycle();
         unsafe {
-            (*self.subscriber_list_state.get()).for_each(|h, subscriber_id| {
-                visited_indices[h.index() as usize] = Some(*subscriber_id);
+            (*self.subscriber_list_state.get()).for_each(|h, port| {
+                let inner_result = self.sender.update_connection(
+                    h.index() as usize,
+                    ReceiverDetails {
+                        port_id: port.subscriber_id.value(),
+                        buffer_size: port.buffer_size,
+                    },
+                    |connection| self.deliver_sample_history(connection),
+                );
+
+                if result.is_ok() {
+                    result = inner_result;
+                }
+
                 CallbackProgression::Continue
             })
         };
 
-        for (i, index) in visited_indices.iter().enumerate() {
-            match index {
-                Some(subscriber_details) => {
-                    let create_connection = match self.subscriber_connections.get(i) {
-                        None => true,
-                        Some(connection) => {
-                            let is_connected =
-                                connection.subscriber_id != subscriber_details.subscriber_id;
-                            if is_connected {
-                                self.remove_connection(i);
-                            }
-                            is_connected
-                        }
-                    };
+        self.sender.finish_update_connection_cycle();
 
-                    if create_connection {
-                        match self.subscriber_connections.create(i, *subscriber_details) {
-                            Ok(()) => match &self.subscriber_connections.get(i) {
-                                Some(connection) => self.deliver_sample_history(connection),
-                                None => {
-                                    fatal_panic!(from self, "This should never happen! Unable to acquire previously created subscriber connection.")
-                                }
-                            },
-                            Err(e) => match &self.config.degration_callback {
-                                Some(c) => match c.call(
-                                    self.static_config.clone(),
-                                    self.port_id,
-                                    subscriber_details.subscriber_id,
-                                ) {
-                                    DegrationAction::Ignore => (),
-                                    DegrationAction::Warn => {
-                                        warn!(from self,
-                                            "Unable to establish connection to new subscriber {:?}.",
-                                            subscriber_details.subscriber_id )
-                                    }
-                                    DegrationAction::Fail => {
-                                        fail!(from self, with e,
-                                           "Unable to establish connection to new subscriber {:?}.",
-                                           subscriber_details.subscriber_id );
-                                    }
-                                },
-                                None => {
-                                    warn!(from self,
-                                        "Unable to establish connection to new subscriber {:?}.",
-                                        subscriber_details.subscriber_id )
-                                }
-                            },
-                        }
-                    }
-                }
-                None => self.remove_connection(i),
-            }
-        }
-
-        Ok(())
+        result
     }
 
     fn update_connections(&self) -> Result<(), ConnectionFailure> {
@@ -541,7 +235,7 @@ impl<Service: service::Service> PublisherBackend<Service> {
                 .subscribers
                 .update_state(&mut *self.subscriber_list_state.get())
         } {
-            fail!(from self, when self.populate_subscriber_channels(),
+            fail!(from self, when self.force_update_connections(),
                 "Connections were updated only partially since at least one connection to a Subscriber port failed.");
         }
 
@@ -553,13 +247,24 @@ impl<Service: service::Service> PublisherBackend<Service> {
             None => (),
             Some(history) => {
                 let history = unsafe { &mut *history.get() };
-                for i in 0..history.len() {
+                let buffer_size = connection.sender.buffer_size();
+                let history_start = history.len().saturating_sub(buffer_size);
+
+                for i in history_start..history.len() {
                     let old_sample = unsafe { history.get_unchecked(i) };
+                    self.sender.retrieve_returned_samples();
 
                     let offset = PointerOffset::from_value(old_sample.offset);
-                    match connection.sender.try_send(offset, old_sample.size) {
-                        Ok(_) => {
-                            self.borrow_sample(offset);
+                    match connection
+                        .sender
+                        .try_send(offset, old_sample.size, ChannelId::new(0))
+                    {
+                        Ok(overflow) => {
+                            self.sender.borrow_sample(offset);
+
+                            if let Some(old) = overflow {
+                                self.sender.release_sample(old);
+                            }
                         }
                         Err(e) => {
                             warn!(from self, "Failed to deliver history to new subscriber via {:?} due to {:?}", connection, e);
@@ -574,18 +279,19 @@ impl<Service: service::Service> PublisherBackend<Service> {
         &self,
         offset: PointerOffset,
         sample_size: usize,
-    ) -> Result<usize, PublisherSendError> {
+    ) -> Result<usize, SendError> {
         let msg = "Unable to send sample";
         if !self.is_active.load(Ordering::Relaxed) {
-            fail!(from self, with PublisherSendError::ConnectionBrokenSincePublisherNoLongerExists,
-                "{} since the connections could not be updated.", msg);
+            fail!(from self, with SendError::ConnectionBrokenSinceSenderNoLongerExists,
+                "{} since the corresponding publisher is already disconnected.", msg);
         }
 
         fail!(from self, when self.update_connections(),
             "{} since the connections could not be updated.", msg);
 
         self.add_sample_to_history(offset, sample_size);
-        self.deliver_sample(offset, sample_size)
+        self.sender
+            .deliver_offset(offset, sample_size, ChannelId::new(0))
     }
 }
 
@@ -593,22 +299,27 @@ impl<Service: service::Service> PublisherBackend<Service> {
 #[derive(Debug)]
 pub struct Publisher<
     Service: service::Service,
-    Payload: Debug + ?Sized + 'static,
-    UserHeader: Debug,
+    Payload: Debug + ZeroCopySend + ?Sized + 'static,
+    UserHeader: Debug + ZeroCopySend,
 > {
-    pub(crate) backend: Arc<PublisherBackend<Service>>,
+    pub(crate) publisher_shared_state: Arc<PublisherSharedState<Service>>,
     dynamic_publisher_handle: Option<ContainerHandle>,
-    payload_size: usize,
     _payload: PhantomData<Payload>,
     _user_header: PhantomData<UserHeader>,
 }
 
-impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug> Drop
-    for Publisher<Service, Payload, UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > Drop for Publisher<Service, Payload, UserHeader>
 {
     fn drop(&mut self) {
+        self.publisher_shared_state
+            .is_active
+            .store(false, Ordering::Relaxed);
         if let Some(handle) = self.dynamic_publisher_handle {
-            self.backend
+            self.publisher_shared_state
                 .service_state
                 .dynamic_storage
                 .get()
@@ -618,8 +329,11 @@ impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug> Drop
     }
 }
 
-impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
-    Publisher<Service, Payload, UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > Publisher<Service, Payload, UserHeader>
 {
     pub(crate) fn new(
         service: &Service,
@@ -636,11 +350,14 @@ impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
             .publish_subscribe()
             .subscribers;
 
-        let number_of_samples = service
-            .__internal_state()
-            .static_config
-            .messaging_pattern
-            .required_amount_of_samples_per_data_segment(config.max_loaned_samples);
+        let number_of_samples = unsafe {
+            service
+                .__internal_state()
+                .static_config
+                .messaging_pattern
+                .publish_subscribe()
+        }
+        .required_amount_of_samples_per_data_segment(config.max_loaned_samples);
 
         let data_segment_type =
             DataSegmentType::new_from_allocation_strategy(config.allocation_strategy);
@@ -662,61 +379,80 @@ impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
         };
         let global_config = service.__internal_state().shared_node.config();
 
+        let segment_name = data_segment_name(publisher_details.publisher_id.value());
+        let data_segment = match data_segment_type {
+            DataSegmentType::Static => DataSegment::create_static_segment(
+                &segment_name,
+                sample_layout,
+                global_config,
+                number_of_samples,
+            ),
+            DataSegmentType::Dynamic => DataSegment::create_dynamic_segment(
+                &segment_name,
+                sample_layout,
+                global_config,
+                number_of_samples,
+                config.allocation_strategy,
+            ),
+        };
+
         let data_segment = fail!(from origin,
-                when DataSegment::create(&publisher_details, global_config, sample_layout, config.allocation_strategy),
+                when data_segment,
                 with PublisherCreateError::UnableToCreateDataSegment,
                 "{} since the data segment could not be acquired.", msg);
 
-        let backend = Arc::new(PublisherBackend {
+        let publisher_shared_state = Arc::new(PublisherSharedState {
             is_active: IoxAtomicBool::new(true),
-            data_segment,
-            segment_states: {
-                let mut v: Vec<SegmentState> = Vec::with_capacity(max_number_of_segments as usize);
-                for _ in 0..max_number_of_segments {
-                    v.push(SegmentState::new(number_of_samples))
-                }
-                v
-            },
             service_state: service.__internal_state().clone(),
-            port_id,
-            subscriber_connections: SubscriberConnections::new(
-                subscriber_list.capacity(),
-                service.__internal_state().shared_node.clone(),
-                port_id,
-                static_config,
+            sender: Sender {
+                data_segment,
+                segment_states: {
+                    let mut v: Vec<SegmentState> =
+                        Vec::with_capacity(max_number_of_segments as usize);
+                    for _ in 0..max_number_of_segments {
+                        v.push(SegmentState::new(number_of_samples))
+                    }
+                    v
+                },
+                connections: (0..subscriber_list.capacity())
+                    .map(|_| UnsafeCell::new(None))
+                    .collect(),
+                sender_port_id: port_id.value(),
+                shared_node: service.__internal_state().shared_node.clone(),
+                receiver_max_buffer_size: static_config.subscriber_max_buffer_size,
+                receiver_max_borrowed_samples: static_config.subscriber_max_borrowed_samples,
+                enable_safe_overflow: static_config.enable_safe_overflow,
                 number_of_samples,
                 max_number_of_segments,
-            ),
+                degradation_callback: None,
+                service_state: service.__internal_state().clone(),
+                tagger: CyclicTagger::new(),
+                loan_counter: IoxAtomicUsize::new(0),
+                sender_max_borrowed_samples: config.max_loaned_samples,
+                unable_to_deliver_strategy: config.unable_to_deliver_strategy,
+                message_type_details: static_config.message_type_details.clone(),
+                number_of_channels: 1,
+            },
             config,
-            subscriber_list_state: unsafe { UnsafeCell::new(subscriber_list.get_state()) },
+            subscriber_list_state: UnsafeCell::new(unsafe { subscriber_list.get_state() }),
             history: match static_config.history_size == 0 {
                 true => None,
                 false => Some(UnsafeCell::new(Queue::new(static_config.history_size))),
             },
-            static_config: service.__internal_state().static_config.clone(),
-            loan_counter: IoxAtomicUsize::new(0),
         });
 
-        let payload_size = backend
-            .subscriber_connections
-            .static_config
-            .message_type_details
-            .payload
-            .size;
-
         let mut new_self = Self {
-            backend,
+            publisher_shared_state,
             dynamic_publisher_handle: None,
-            payload_size,
             _payload: PhantomData,
             _user_header: PhantomData,
         };
 
-        if let Err(e) = new_self.backend.populate_subscriber_channels() {
+        if let Err(e) = new_self.publisher_shared_state.force_update_connections() {
             warn!(from new_self, "The new Publisher port is unable to connect to every Subscriber port, caused by {:?}.", e);
         }
 
-        std::sync::atomic::compiler_fence(Ordering::SeqCst);
+        core::sync::atomic::compiler_fence(Ordering::SeqCst);
 
         // !MUST! be the last task otherwise a publisher is added to the dynamic config without the
         // creation of all required resources
@@ -742,102 +478,38 @@ impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug>
 
     /// Returns the [`UniquePublisherId`] of the [`Publisher`]
     pub fn id(&self) -> UniquePublisherId {
-        self.backend.port_id
+        UniquePublisherId(UniqueSystemId::from(
+            self.publisher_shared_state.sender.sender_port_id,
+        ))
     }
 
     /// Returns the strategy the [`Publisher`] follows when a [`SampleMut`] cannot be delivered
     /// since the [`Subscriber`](crate::port::subscriber::Subscriber)s buffer is full.
     pub fn unable_to_deliver_strategy(&self) -> UnableToDeliverStrategy {
-        self.backend.config.unable_to_deliver_strategy
-    }
-
-    /// Returns the maximum slice length configured for this [`Publisher`].
-    pub fn initial_max_slice_len(&self) -> usize {
-        self.backend.config.initial_max_slice_len
-    }
-
-    fn allocate(&self, layout: Layout) -> Result<AllocationPair, PublisherLoanError> {
-        let msg = "Unable to allocate Sample with";
-
-        if self.backend.loan_counter.load(Ordering::Relaxed)
-            >= self.backend.config.max_loaned_samples
-        {
-            fail!(from self, with PublisherLoanError::ExceedsMaxLoanedSamples,
-                "{} {:?} since already {} samples were loaned and it would exceed the maximum of parallel loans of {}. Release or send a loaned sample to loan another sample.",
-                msg, layout, self.backend.loan_counter.load(Ordering::Relaxed), self.backend.config.max_loaned_samples);
-        }
-
-        match self.backend.allocate(layout) {
-            Ok(chunk) => {
-                self.backend.loan_counter.fetch_add(1, Ordering::Relaxed);
-                Ok(chunk)
-            }
-            Err(ShmAllocationError::AllocationError(AllocationError::OutOfMemory)) => {
-                fail!(from self, with PublisherLoanError::OutOfMemory,
-                    "{} {:?} since the underlying shared memory is out of memory.", msg, layout);
-            }
-            Err(ShmAllocationError::AllocationError(AllocationError::SizeTooLarge))
-            | Err(ShmAllocationError::AllocationError(AllocationError::AlignmentFailure)) => {
-                fatal_panic!(from self, "{} {:?} since the system seems to be corrupted.", msg, layout);
-            }
-            Err(v) => {
-                fail!(from self, with PublisherLoanError::InternalFailure,
-                    "{} {:?} since an internal failure occurred ({:?}).", msg, layout, v);
-            }
-        }
-    }
-
-    fn sample_layout(&self, number_of_elements: usize) -> Layout {
-        self.backend
-            .subscriber_connections
-            .static_config
-            .message_type_details
-            .sample_layout(number_of_elements)
-    }
-
-    fn user_header_ptr(&self, header: *const Header) -> *const u8 {
-        self.backend
-            .subscriber_connections
-            .static_config
-            .message_type_details
-            .user_header_ptr_from_header(header.cast())
-            .cast()
-    }
-
-    fn payload_ptr(&self, header: *const Header) -> *const u8 {
-        self.backend
-            .subscriber_connections
-            .static_config
-            .message_type_details
-            .payload_ptr_from_header(header.cast())
-            .cast()
-    }
-
-    fn payload_type_variant(&self) -> TypeVariant {
-        self.backend
-            .subscriber_connections
-            .static_config
-            .message_type_details
-            .payload
-            .variant
+        self.publisher_shared_state
+            .sender
+            .unable_to_deliver_strategy
     }
 }
 
 ////////////////////////
 // BEGIN: typed API
 ////////////////////////
-impl<Service: service::Service, Payload: Debug + Sized, UserHeader: Debug>
-    Publisher<Service, Payload, UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend + Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > Publisher<Service, Payload, UserHeader>
 {
     /// Copies the input `value` into a [`crate::sample_mut::SampleMut`] and delivers it.
     /// On success it returns the number of [`crate::port::subscriber::Subscriber`]s that received
-    /// the data, otherwise a [`PublisherSendError`] describing the failure.
+    /// the data, otherwise a [`SendError`] describing the failure.
     ///
     /// # Example
     ///
     /// ```
     /// use iceoryx2::prelude::*;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -851,7 +523,7 @@ impl<Service: service::Service, Payload: Debug + Sized, UserHeader: Debug>
     /// # Ok(())
     /// # }
     /// ```
-    pub fn send_copy(&self, value: Payload) -> Result<usize, PublisherSendError> {
+    pub fn send_copy(&self, value: Payload) -> Result<usize, SendError> {
         let msg = "Unable to send copy of payload";
         let sample = fail!(from self, when self.loan_uninit(),
                                     "{} since the loan of a sample failed.", msg);
@@ -862,13 +534,13 @@ impl<Service: service::Service, Payload: Debug + Sized, UserHeader: Debug>
     /// Loans/allocates a [`SampleMutUninit`] from the underlying data segment of the [`Publisher`].
     /// The user has to initialize the payload before it can be sent.
     ///
-    /// On failure it returns [`PublisherLoanError`] describing the failure.
+    /// On failure it returns [`LoanError`] describing the failure.
     ///
     /// # Example
     ///
     /// ```
     /// use iceoryx2::prelude::*;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -888,41 +560,45 @@ impl<Service: service::Service, Payload: Debug + Sized, UserHeader: Debug>
     /// ```
     pub fn loan_uninit(
         &self,
-    ) -> Result<SampleMutUninit<Service, MaybeUninit<Payload>, UserHeader>, PublisherLoanError>
-    {
-        let chunk = self.allocate(self.sample_layout(1))?;
-        let header_ptr = chunk.shm_pointer.data_ptr as *mut Header;
-        let user_header_ptr = self.user_header_ptr(header_ptr) as *mut UserHeader;
-        let payload_ptr = self.payload_ptr(header_ptr) as *mut MaybeUninit<Payload>;
-        unsafe { header_ptr.write(Header::new(self.backend.port_id, 1)) };
+    ) -> Result<SampleMutUninit<Service, MaybeUninit<Payload>, UserHeader>, LoanError> {
+        let chunk = self
+            .publisher_shared_state
+            .sender
+            .allocate(self.publisher_shared_state.sender.sample_layout(1))?;
+        let header_ptr = chunk.header as *mut Header;
+        unsafe { header_ptr.write(Header::new(self.id(), 1)) };
 
-        let sample =
-            unsafe { RawSampleMut::new_unchecked(header_ptr, user_header_ptr, payload_ptr) };
+        let sample = unsafe {
+            RawSampleMut::new_unchecked(header_ptr, chunk.user_header.cast(), chunk.payload.cast())
+        };
         Ok(
             SampleMutUninit::<Service, MaybeUninit<Payload>, UserHeader>::new(
-                &self.backend,
+                &self.publisher_shared_state,
                 sample,
-                chunk.shm_pointer.offset,
-                chunk.sample_size,
+                chunk.offset,
+                chunk.size,
             ),
         )
     }
 }
 
-impl<Service: service::Service, Payload: Default + Debug + Sized, UserHeader: Debug>
-    Publisher<Service, Payload, UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Default + Debug + ZeroCopySend + Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > Publisher<Service, Payload, UserHeader>
 {
     /// Loans/allocates a [`crate::sample_mut::SampleMut`] from the underlying data segment of the [`Publisher`]
     /// and initialize it with the default value. This can be a performance hit and [`Publisher::loan_uninit`]
     /// can be used to loan a [`core::mem::MaybeUninit<Payload>`].
     ///
-    /// On failure it returns [`PublisherLoanError`] describing the failure.
+    /// On failure it returns [`LoanError`] describing the failure.
     ///
     /// # Example
     ///
     /// ```
     /// use iceoryx2::prelude::*;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -939,7 +615,7 @@ impl<Service: service::Service, Payload: Default + Debug + Sized, UserHeader: De
     /// # Ok(())
     /// # }
     /// ```
-    pub fn loan(&self) -> Result<SampleMut<Service, Payload, UserHeader>, PublisherLoanError> {
+    pub fn loan(&self) -> Result<SampleMut<Service, Payload, UserHeader>, LoanError> {
         Ok(self.loan_uninit()?.write_payload(Payload::default()))
     }
 }
@@ -950,21 +626,24 @@ impl<Service: service::Service, Payload: Default + Debug + Sized, UserHeader: De
 ////////////////////////
 // BEGIN: sliced API
 ////////////////////////
-impl<Service: service::Service, Payload: Default + Debug, UserHeader: Debug>
-    Publisher<Service, [Payload], UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Default + Debug + ZeroCopySend,
+        UserHeader: Debug + ZeroCopySend,
+    > Publisher<Service, [Payload], UserHeader>
 {
     /// Loans/allocates a [`crate::sample_mut::SampleMut`] from the underlying data segment of the [`Publisher`]
     /// and initializes all slice elements with the default value. This can be a performance hit
     /// and [`Publisher::loan_slice_uninit()`] can be used to loan a slice of
     /// [`core::mem::MaybeUninit<Payload>`].
     ///
-    /// On failure it returns [`PublisherLoanError`] describing the failure.
+    /// On failure it returns [`LoanError`] describing the failure.
     ///
     /// # Example
     ///
     /// ```
     /// use iceoryx2::prelude::*;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), Box<dyn core::error::Error>> {
     /// # let node = NodeBuilder::new().create::<ipc::Service>()?;
     /// #
     /// # let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -987,19 +666,27 @@ impl<Service: service::Service, Payload: Default + Debug, UserHeader: Debug>
     pub fn loan_slice(
         &self,
         number_of_elements: usize,
-    ) -> Result<SampleMut<Service, [Payload], UserHeader>, PublisherLoanError> {
+    ) -> Result<SampleMut<Service, [Payload], UserHeader>, LoanError> {
         let sample = self.loan_slice_uninit(number_of_elements)?;
         Ok(sample.write_from_fn(|_| Payload::default()))
     }
 }
 
-impl<Service: service::Service, Payload: Debug, UserHeader: Debug>
-    Publisher<Service, [Payload], UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend,
+        UserHeader: Debug + ZeroCopySend,
+    > Publisher<Service, [Payload], UserHeader>
 {
+    /// Returns the maximum initial slice length configured for this [`Publisher`].
+    pub fn initial_max_slice_len(&self) -> usize {
+        self.publisher_shared_state.config.initial_max_slice_len
+    }
+
     /// Loans/allocates a [`SampleMutUninit`] from the underlying data segment of the [`Publisher`].
     /// The user has to initialize the payload before it can be sent.
     ///
-    /// On failure it returns [`PublisherLoanError`] describing the failure.
+    /// On failure it returns [`LoanError`] describing the failure.
     ///
     /// # Example
     ///
@@ -1021,13 +708,12 @@ impl<Service: service::Service, Payload: Debug, UserHeader: Debug>
     /// let sample = sample.write_from_fn(|n| n * 2); // alternatively `sample.payload_mut()` can be use to access the `[MaybeUninit<Payload>]`
     ///
     /// sample.send()?;
-    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// # Ok::<_, Box<dyn core::error::Error>>(())
     /// ```
     pub fn loan_slice_uninit(
         &self,
         slice_len: usize,
-    ) -> Result<SampleMutUninit<Service, [MaybeUninit<Payload>], UserHeader>, PublisherLoanError>
-    {
+    ) -> Result<SampleMutUninit<Service, [MaybeUninit<Payload>], UserHeader>, LoanError> {
         // required since Rust does not support generic specializations or negative traits
         debug_assert!(TypeId::of::<Payload>() != TypeId::of::<CustomPayloadMarker>());
 
@@ -1038,44 +724,44 @@ impl<Service: service::Service, Payload: Debug, UserHeader: Debug>
         &self,
         slice_len: usize,
         underlying_number_of_slice_elements: usize,
-    ) -> Result<SampleMutUninit<Service, [MaybeUninit<Payload>], UserHeader>, PublisherLoanError>
-    {
-        let max_slice_len = self.backend.config.initial_max_slice_len;
-        if self.backend.config.allocation_strategy == AllocationStrategy::Static
+    ) -> Result<SampleMutUninit<Service, [MaybeUninit<Payload>], UserHeader>, LoanError> {
+        let max_slice_len = self.publisher_shared_state.config.initial_max_slice_len;
+        if self.publisher_shared_state.config.allocation_strategy == AllocationStrategy::Static
             && max_slice_len < slice_len
         {
-            fail!(from self, with PublisherLoanError::ExceedsMaxLoanSize,
+            fail!(from self, with LoanError::ExceedsMaxLoanSize,
                 "Unable to loan slice with {} elements since it would exceed the max supported slice length of {}.",
                 slice_len, max_slice_len);
         }
 
-        let sample_layout = self.sample_layout(slice_len);
-        let chunk = self.allocate(sample_layout)?;
-        let header_ptr = chunk.shm_pointer.data_ptr as *mut Header;
-        let user_header_ptr = self.user_header_ptr(header_ptr) as *mut UserHeader;
-        let payload_ptr = self.payload_ptr(header_ptr) as *mut MaybeUninit<Payload>;
-        unsafe { header_ptr.write(Header::new(self.backend.port_id, slice_len as _)) };
+        let sample_layout = self.publisher_shared_state.sender.sample_layout(slice_len);
+        let chunk = self.publisher_shared_state.sender.allocate(sample_layout)?;
+        let header_ptr = chunk.header as *mut Header;
+        unsafe { header_ptr.write(Header::new(self.id(), slice_len as _)) };
 
         let sample = unsafe {
             RawSampleMut::new_unchecked(
                 header_ptr,
-                user_header_ptr,
-                core::slice::from_raw_parts_mut(payload_ptr, underlying_number_of_slice_elements),
+                chunk.user_header.cast(),
+                core::slice::from_raw_parts_mut(
+                    chunk.payload.cast(),
+                    underlying_number_of_slice_elements,
+                ),
             )
         };
 
         Ok(
             SampleMutUninit::<Service, [MaybeUninit<Payload>], UserHeader>::new(
-                &self.backend,
+                &self.publisher_shared_state,
                 sample,
-                chunk.shm_pointer.offset,
-                chunk.sample_size,
+                chunk.offset,
+                chunk.size,
             ),
         )
     }
 }
 
-impl<Service: service::Service, UserHeader: Debug>
+impl<Service: service::Service, UserHeader: Debug + ZeroCopySend>
     Publisher<Service, [CustomPayloadMarker], UserHeader>
 {
     /// # Safety
@@ -1089,137 +775,32 @@ impl<Service: service::Service, UserHeader: Debug>
     pub unsafe fn loan_custom_payload(
         &self,
         slice_len: usize,
-    ) -> Result<
-        SampleMutUninit<Service, [MaybeUninit<CustomPayloadMarker>], UserHeader>,
-        PublisherLoanError,
-    > {
+    ) -> Result<SampleMutUninit<Service, [MaybeUninit<CustomPayloadMarker>], UserHeader>, LoanError>
+    {
         // TypeVariant::Dynamic == slice and only here it makes sense to loan more than one element
-        debug_assert!(slice_len == 1 || self.payload_type_variant() == TypeVariant::Dynamic);
+        debug_assert!(
+            slice_len == 1
+                || self.publisher_shared_state.sender.payload_type_variant()
+                    == TypeVariant::Dynamic
+        );
 
-        self.loan_slice_uninit_impl(slice_len, self.payload_size * slice_len)
+        self.loan_slice_uninit_impl(
+            slice_len,
+            self.publisher_shared_state.sender.payload_size() * slice_len,
+        )
     }
 }
 ////////////////////////
 // END: sliced API
 ////////////////////////
 
-impl<Service: service::Service, Payload: Debug + ?Sized, UserHeader: Debug> UpdateConnections
-    for Publisher<Service, Payload, UserHeader>
+impl<
+        Service: service::Service,
+        Payload: Debug + ZeroCopySend + ?Sized,
+        UserHeader: Debug + ZeroCopySend,
+    > UpdateConnections for Publisher<Service, Payload, UserHeader>
 {
     fn update_connections(&self) -> Result<(), ConnectionFailure> {
-        self.backend.update_connections()
+        self.publisher_shared_state.update_connections()
     }
-}
-
-pub(crate) unsafe fn remove_data_segment_of_publisher<Service: service::Service>(
-    port_id: &UniquePublisherId,
-    config: &config::Config,
-) -> Result<(), NamedConceptRemoveError> {
-    let origin = format!(
-        "remove_data_segment_of_publisher::<{}>::({:?})",
-        core::any::type_name::<Service>(),
-        port_id
-    );
-
-    fail!(from origin, when <Service::SharedMemory as NamedConceptMgmt>::remove_cfg(
-            &data_segment_name(port_id),
-            &data_segment_config::<Service>(config),
-        ), "Unable to remove the publishers data segment."
-    );
-
-    Ok(())
-}
-
-fn connections<Service: service::Service>(
-    origin: &str,
-    msg: &str,
-    config: &<Service::Connection as NamedConceptMgmt>::Configuration,
-) -> Result<Vec<FileName>, RemovePubSubPortFromAllConnectionsError> {
-    match <Service::Connection as NamedConceptMgmt>::list_cfg(config) {
-        Ok(list) => Ok(list),
-        Err(NamedConceptListError::InsufficientPermissions) => {
-            fail!(from origin, with RemovePubSubPortFromAllConnectionsError::InsufficientPermissions,
-                    "{} due to insufficient permissions to list all connections.", msg);
-        }
-        Err(NamedConceptListError::InternalError) => {
-            fail!(from origin, with RemovePubSubPortFromAllConnectionsError::InternalError,
-                "{} due to an internal error while listing all connections.", msg);
-        }
-    }
-}
-
-pub(crate) unsafe fn remove_publisher_from_all_connections<Service: service::Service>(
-    port_id: &UniquePublisherId,
-    config: &config::Config,
-) -> Result<(), RemovePubSubPortFromAllConnectionsError> {
-    let origin = format!(
-        "remove_publisher_from_all_connections::<{}>::({:?})",
-        core::any::type_name::<Service>(),
-        port_id
-    );
-    let msg = "Unable to remove the publisher from all connections";
-
-    let connection_config = connection_config::<Service>(config);
-    let connection_list = connections::<Service>(&origin, msg, &connection_config)?;
-
-    let mut ret_val = Ok(());
-    for connection in connection_list {
-        let publisher_id = extract_publisher_id_from_connection(&connection);
-        if publisher_id == *port_id {
-            match <Service::Connection as NamedConceptMgmt>::remove_cfg(
-                &connection,
-                &connection_config,
-            ) {
-                Ok(_) => (),
-                Err(NamedConceptRemoveError::InsufficientPermissions) => {
-                    debug!(from origin, "{} due to insufficient permissions to remove the connection ({:?}).", msg, connection);
-                    ret_val = Err(RemovePubSubPortFromAllConnectionsError::InsufficientPermissions);
-                }
-                Err(NamedConceptRemoveError::InternalError) => {
-                    debug!(from origin, "{} due to insufficient permissions to remove the connection ({:?}).", msg, connection);
-                    ret_val = Err(RemovePubSubPortFromAllConnectionsError::InternalError);
-                }
-            }
-        }
-    }
-
-    ret_val
-}
-
-pub(crate) unsafe fn remove_subscriber_from_all_connections<Service: service::Service>(
-    port_id: &UniqueSubscriberId,
-    config: &config::Config,
-) -> Result<(), RemovePubSubPortFromAllConnectionsError> {
-    let origin = format!(
-        "remove_subscriber_from_all_connections::<{}>::({:?})",
-        core::any::type_name::<Service>(),
-        port_id
-    );
-    let msg = "Unable to remove the subscriber from all connections";
-
-    let connection_config = connection_config::<Service>(config);
-    let connection_list = connections::<Service>(&origin, msg, &connection_config)?;
-
-    let mut ret_val = Ok(());
-    for connection in connection_list {
-        let subscriber_id = extract_subscriber_id_from_connection(&connection);
-        if subscriber_id == *port_id {
-            match <Service::Connection as NamedConceptMgmt>::remove_cfg(
-                &connection,
-                &connection_config,
-            ) {
-                Ok(_) => (),
-                Err(NamedConceptRemoveError::InsufficientPermissions) => {
-                    debug!(from origin, "{} due to insufficient permissions to remove the connection ({:?}).", msg, connection);
-                    ret_val = Err(RemovePubSubPortFromAllConnectionsError::InsufficientPermissions);
-                }
-                Err(NamedConceptRemoveError::InternalError) => {
-                    debug!(from origin, "{} due to insufficient permissions to remove the connection ({:?}).", msg, connection);
-                    ret_val = Err(RemovePubSubPortFromAllConnectionsError::InternalError);
-                }
-            }
-        }
-    }
-
-    ret_val
 }

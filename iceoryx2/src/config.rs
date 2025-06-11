@@ -17,7 +17,7 @@
 //! use iceoryx2::config::Config;
 //! use iceoryx2_bb_system_types::path::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //!
 //! // create a default config and override some entries
 //! let mut custom_config = Config::default();
@@ -48,7 +48,7 @@
 //! use iceoryx2_bb_system_types::file_path::FilePath;
 //! use iceoryx2_bb_container::semantic_string::SemanticString;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! Config::setup_global_config_from_file(
 //!     &FilePath::new(b"my/custom/config/file.toml")?)?;
 //! # Ok(())
@@ -62,48 +62,64 @@
 //! use iceoryx2_bb_system_types::file_path::FilePath;
 //! use iceoryx2_bb_container::semantic_string::SemanticString;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let custom_config = Config::from_file(
 //!     &FilePath::new(b"my/custom/config/file.toml")?)?;
 //! # Ok(())
 //! # }
 //! ```
 
+use core::time::Duration;
 use iceoryx2_bb_container::semantic_string::SemanticString;
-use iceoryx2_bb_elementary::lazy_singleton::*;
-use iceoryx2_bb_posix::{file::FileBuilder, shared_memory::AccessMode};
+use iceoryx2_bb_elementary::{lazy_singleton::*, CallbackProgression};
+use iceoryx2_bb_posix::{
+    file::{FileBuilder, FileOpenError},
+    shared_memory::AccessMode,
+    system_configuration::get_global_config_path,
+};
 use iceoryx2_bb_system_types::file_name::FileName;
 use iceoryx2_bb_system_types::file_path::FilePath;
 use iceoryx2_bb_system_types::path::Path;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
-use iceoryx2_bb_log::{debug, fail, trace, warn};
+use iceoryx2_bb_log::{fail, fatal_panic, trace, warn};
 
-use crate::service::port_factory::publisher::UnableToDeliverStrategy;
+use crate::port::unable_to_deliver_strategy::UnableToDeliverStrategy;
 
-/// Path to the default config file
-pub const DEFAULT_CONFIG_FILE: &[u8] = b"config/iceoryx2.toml";
+const DEFAULT_CONFIG_FILE_NAME: &[u8] = b"iceoryx2.toml";
+const RELATIVE_LOCAL_CONFIG_PATH: &[u8] = b"config";
+const RELATIVE_CONFIG_FILE_PATH: &[u8] = b"iceoryx2";
+
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+enum ConfigIterationFailure {
+    #[allow(dead_code)] // TODO: #617
+    UnableToAcquireCurrentUserDetails,
+    TooLongUserConfigDirectory,
+}
 
 /// Failures occurring while creating a new [`Config`] object with [`Config::from_file()`] or
 /// [`Config::setup_global_config_from_file()`]
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum ConfigCreationError {
-    /// The config file could not be opened.
-    FailedToOpenConfigFile,
     /// The config file could not be read.
     FailedToReadConfigFileContents,
     /// Parts of the config file could not be deserialized. Indicates some kind of syntax error.
     UnableToDeserializeContents,
+    /// Insufficient permissions to open the config file.
+    InsufficientPermissions,
+    /// The provided config file does not exist
+    ConfigFileDoesNotExist,
+    /// Since the config file could not be opened
+    UnableToOpenConfigFile,
 }
 
-impl std::fmt::Display for ConfigCreationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for ConfigCreationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "ConfigCreationError::{:?}", self)
     }
 }
 
-impl std::error::Error for ConfigCreationError {}
+impl core::error::Error for ConfigCreationError {}
 
 /// All configurable settings of a [`crate::service::Service`].
 #[non_exhaustive]
@@ -112,8 +128,8 @@ impl std::error::Error for ConfigCreationError {}
 pub struct Service {
     /// The directory in which all service files are stored
     pub directory: Path,
-    /// The suffix of the publishers data segment
-    pub publisher_data_segment_suffix: FileName,
+    /// The suffix of the ports data segment
+    pub data_segment_suffix: FileName,
     /// The suffix of the static config file
     pub static_config_storage_suffix: FileName,
     /// The suffix of the dynamic config file
@@ -168,14 +184,14 @@ pub struct Global {
 impl Global {
     /// The absolute path to the service directory where all static service infos are stored
     pub fn service_dir(&self) -> Path {
-        let mut path = *self.root_path();
+        let mut path = self.root_path().clone();
         path.add_path_entry(&self.service.directory).unwrap();
         path
     }
 
     /// The absolute path to the node directory where all node details are stored
     pub fn node_dir(&self) -> Path {
-        let mut path = *self.root_path();
+        let mut path = self.root_path().clone();
         path.add_path_entry(&self.node.directory).unwrap();
         path
     }
@@ -196,11 +212,11 @@ impl Global {
     pub fn set_root_path(&mut self, value: &Path) {
         #[cfg(target_os = "windows")]
         {
-            self.root_path_windows = *value;
+            self.root_path_windows = value.clone();
         }
         #[cfg(not(target_os = "windows"))]
         {
-            self.root_path_unix = *value;
+            self.root_path_unix = value.clone();
         }
     }
 }
@@ -215,6 +231,8 @@ pub struct Defaults {
     pub publish_subscribe: PublishSubscribe,
     /// Default settings for the messaging pattern event
     pub event: Event,
+    /// Default settings for the messaging pattern request-response
+    pub request_response: RequestResonse,
 }
 
 /// Default settings for the publish-subscribe messaging pattern. These settings are used unless
@@ -272,12 +290,83 @@ pub struct Event {
     pub max_nodes: usize,
     /// The largest event id supported by the event service
     pub event_id_max_value: usize,
+    /// Defines the maximum allowed time between two consecutive notifications. If a notifiation
+    /// is not sent after the defined time, every [`Listener`](crate::port::listener::Listener)
+    /// that is attached to a [`WaitSet`](crate::waitset::WaitSet) will be notified.
+    pub deadline: Option<Duration>,
     /// Defines the event id value that is emitted after a new notifier was created.
     pub notifier_created_event: Option<usize>,
     /// Defines the event id value that is emitted before a new notifier is dropped.
     pub notifier_dropped_event: Option<usize>,
     /// Defines the event id value that is emitted if a notifier was identified as dead.
     pub notifier_dead_event: Option<usize>,
+}
+
+/// Default settings for the request response messaging pattern. These settings are used unless
+/// the user specifies custom QoS or port settings.
+#[non_exhaustive]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct RequestResonse {
+    /// Defines if the request buffer of the [`Service`] safely overflows.
+    pub enable_safe_overflow_for_requests: bool,
+    /// Defines if the response buffer of the [`Service`] safely overflows.
+    pub enable_safe_overflow_for_responses: bool,
+    /// The maximum of [`crate::active_request::ActiveRequest`]s a [`crate::port::server::Server`] can hold in parallel per [`crate::port::client::Client`].
+    pub max_active_requests_per_client: usize,
+    /// The maximum buffer size for [`crate::response::Response`]s for a [`crate::pending_response::PendingResponse`]
+    /// for each [`Server`](crate::port::server::Server) connection.
+    /// In a multi [`Server`](crate::port::server::Server) scenario every
+    /// [`Response`](crate::response::Response) stream from every
+    /// [`Server`](crate::port::server::Server) has the same buffer size resulting in a total
+    /// buffer size of `NUMBER_OF_SERVERS * max_response_buffer_size`
+    pub max_response_buffer_size: usize,
+    /// The maximum amount of supported [`crate::port::server::Server`]
+    pub max_servers: usize,
+    /// The maximum amount of supported [`crate::port::client::Client`]
+    pub max_clients: usize,
+    /// The maximum amount of supported [`crate::node::Node`]s. Defines indirectly how many
+    /// processes can open the service at the same time.
+    pub max_nodes: usize,
+    /// The maximum amount of borrowed [`crate::response::Response`] per [`crate::pending_response::PendingResponse`] on the [`crate::port::client::Client`] side.
+    pub max_borrowed_responses_per_pending_response: usize,
+    /// Defines how many [`crate::request_mut::RequestMut`] a [`crate::port::client::Client`] can loan in parallel.
+    pub max_loaned_requests: usize,
+    /// Defines how many [`crate::response_mut::ResponseMut`] a [`crate::port::server::Server`] can loan in parallel per [`crate::active_request::ActiveRequest`].
+    pub server_max_loaned_responses_per_request: usize,
+    /// Defines the [`UnableToDeliverStrategy`] when a [`Client`](crate::port::client::Client)
+    /// could not deliver the request to the [`Server`](crate::port::server::Server).
+    pub client_unable_to_deliver_strategy: UnableToDeliverStrategy,
+    /// Defines the [`UnableToDeliverStrategy`] when a [`Server`](crate::port::server::Server)
+    /// could not deliver the response to the [`Client`](crate::port::client::Client).
+    pub server_unable_to_deliver_strategy: UnableToDeliverStrategy,
+    /// Defines the size of the internal [`Client`](crate::port::client::Client)
+    /// buffer that contains expired connections. A
+    /// connection is expired when the [`Server`](crate::port::server::Server)
+    /// disconnected from a service and the connection
+    /// still contains unconsumed [`Response`](crate::response::Response)s.
+    pub client_expired_connection_buffer: usize,
+    /// Allows the [`Server`](crate::port::server::Server) to receive
+    /// [`RequestMut`](crate::response_mut::ResponseMut)s of
+    /// [`Client`](crate::port::client::Client)s that are not interested in a
+    /// [`Response`](crate::response::Response), meaning that the
+    /// [`Server`](crate::port::server::Server) will receive the
+    /// [`RequestMut`](crate::response_mut::ResponseMut) despite the corresponding
+    /// [`PendingResponse`](crate::pending_response::PendingResponse) already went out-of-scope.
+    /// So any [`Response`](crate::response::Response) sent by the
+    /// [`Server`](crate::port::server::Server) would not be received by the corresponding
+    /// [`Client`](crate::port::client::Client)s
+    /// [`PendingResponse`](crate::pending_response::PendingResponse).
+    ///
+    /// Consider enabling this feature if you do not want to loose any
+    /// [`RequestMut`](crate::response_mut::ResponseMut).
+    pub enable_fire_and_forget_requests: bool,
+    /// Defines the size of the internal [`Server`](crate::port::server::Server)
+    /// buffer that contains expired connections. A
+    /// connection is expired when the [`Client`](crate::port::client::Client)
+    /// disconnected from a service and the connection
+    /// still contains unconsumed [`ActiveRequest`](crate::active_request::ActiveRequest)s.
+    pub server_expired_connection_buffer: usize,
 }
 
 /// Represents the configuration that iceoryx2 will utilize. It is divided into two sections:
@@ -305,7 +394,7 @@ impl Default for Config {
                 prefix: FileName::new(b"iox2_").unwrap(),
                 service: Service {
                     directory: Path::new(b"services").unwrap(),
-                    publisher_data_segment_suffix: FileName::new(b".publisher_data").unwrap(),
+                    data_segment_suffix: FileName::new(b".data").unwrap(),
                     static_config_storage_suffix: FileName::new(b".service").unwrap(),
                     dynamic_config_storage_suffix: FileName::new(b".dynamic").unwrap(),
                     creation_timeout: Duration::from_millis(500),
@@ -322,11 +411,28 @@ impl Default for Config {
                 },
             },
             defaults: Defaults {
+                request_response: RequestResonse {
+                    enable_safe_overflow_for_requests: true,
+                    enable_safe_overflow_for_responses: true,
+                    max_active_requests_per_client: 4,
+                    max_response_buffer_size: 2,
+                    max_servers: 2,
+                    max_clients: 8,
+                    max_nodes: 20,
+                    max_borrowed_responses_per_pending_response: 2,
+                    max_loaned_requests: 2,
+                    server_max_loaned_responses_per_request: 2,
+                    client_unable_to_deliver_strategy: UnableToDeliverStrategy::Block,
+                    server_unable_to_deliver_strategy: UnableToDeliverStrategy::Block,
+                    client_expired_connection_buffer: 128,
+                    server_expired_connection_buffer: 128,
+                    enable_fire_and_forget_requests: true,
+                },
                 publish_subscribe: PublishSubscribe {
                     max_subscribers: 8,
                     max_publishers: 2,
                     max_nodes: 20,
-                    publisher_history_size: 1,
+                    publisher_history_size: 0,
                     subscriber_max_buffer_size: 2,
                     subscriber_max_borrowed_samples: 2,
                     publisher_max_loaned_samples: 2,
@@ -339,6 +445,7 @@ impl Default for Config {
                     max_notifiers: 16,
                     max_nodes: 36,
                     event_id_max_value: 4294967295,
+                    deadline: None,
                     notifier_created_event: None,
                     notifier_dropped_event: None,
                     notifier_dead_event: None,
@@ -349,15 +456,117 @@ impl Default for Config {
 }
 
 impl Config {
+    fn relative_local_config_path() -> Path {
+        fatal_panic!(from "Config::relative_local_config_path",
+            when Path::new(RELATIVE_LOCAL_CONFIG_PATH),
+            "This should never happen! The relative local config path contains invalid symbols.")
+    }
+
+    /// The name of the default iceoryx2 config file
+    pub fn default_config_file_name() -> FileName {
+        fatal_panic!(from "Config::default_config_file",
+            when FileName::new(DEFAULT_CONFIG_FILE_NAME),
+            "This should never happen! The default config file name contains invalid symbols.")
+    }
+
+    /// Path to the default config file
+    pub fn default_config_file_path() -> FilePath {
+        fatal_panic!(from "Config::default_config_file_path",
+            when FilePath::from_path_and_file(&Self::relative_local_config_path(), &Self::default_config_file_name()),
+            "This should never happen! The default config file path contains invalid symbols.")
+    }
+
+    /// Relative path to the config file
+    pub fn relative_config_path() -> Path {
+        fatal_panic!(from "Config::relative_config_path",
+            when Path::new(RELATIVE_CONFIG_FILE_PATH),
+            "This should never happen! The relative config path contains invalid symbols.")
+    }
+
+    /// Path to the default user config file
+    pub fn default_user_config_file_path() -> FilePath {
+        fatal_panic!(from "Config::default_config_file_path",
+            when FilePath::from_path_and_file(&Self::relative_config_path(), &Self::default_config_file_name()),
+            "This should never happen! The default config file path contains invalid symbols.")
+    }
+
+    fn iterate_over_config_files<F: FnMut(FilePath) -> CallbackProgression>(
+        mut callback: F,
+    ) -> Result<(), ConfigIterationFailure> {
+        let msg = "Unable to consider all possible config file paths";
+        let origin = "Config::iterate_over_config_files";
+
+        // prio 1: handle project local config file first
+        let local_project_config = Self::default_config_file_path();
+        if callback(local_project_config) == CallbackProgression::Stop {
+            return Ok(());
+        }
+
+        // prio 2: lookup user config file
+        #[cfg(not(target_os = "windows"))] // TODO: #617
+        {
+            let user = fail!(from origin,
+                         when iceoryx2_bb_posix::user::User::from_self(),
+                         with ConfigIterationFailure::UnableToAcquireCurrentUserDetails,
+                         "{} since the current user details could not be acquired.", msg);
+            let mut user_config = user.config_dir().clone();
+            fail!(from origin,
+                when user_config.add_path_entry(&Self::relative_config_path()),
+                with ConfigIterationFailure::TooLongUserConfigDirectory,
+                "{} since the resulting user config directory would be too long.", msg);
+            let user_config = fail!(from origin,
+                when FilePath::from_path_and_file(&user_config, &Self::default_config_file_name()),
+                with ConfigIterationFailure::TooLongUserConfigDirectory,
+                "{} since the resulting user config directory would be too long.", msg);
+
+            if callback(user_config) == CallbackProgression::Stop {
+                return Ok(());
+            }
+        }
+
+        // prio 3: lookup global config file
+        let mut global_config = get_global_config_path();
+        fail!(from origin,
+                when global_config.add_path_entry(&Self::relative_config_path()),
+                with ConfigIterationFailure::TooLongUserConfigDirectory,
+                "{} since the resulting global config directory would be too long.", msg);
+        let global_config = fail!(from origin,
+                when FilePath::from_path_and_file(&global_config, &Self::default_config_file_name()),
+                with ConfigIterationFailure::TooLongUserConfigDirectory,
+                "{} since the resulting global config directory would be too long.", msg);
+
+        callback(global_config);
+
+        Ok(())
+    }
+
     /// Loads a configuration from a file. On success it returns a [`Config`] object otherwise a
     /// [`ConfigCreationError`] describing the failure.
     pub fn from_file(config_file: &FilePath) -> Result<Config, ConfigCreationError> {
         let msg = "Failed to create config";
         let mut new_config = Self::default();
 
-        let file = fail!(from new_config, when FileBuilder::new(config_file).open_existing(AccessMode::Read),
-                with ConfigCreationError::FailedToOpenConfigFile,
-                "{} since the config file could not be opened.", msg);
+        let file = match FileBuilder::new(config_file).open_existing(AccessMode::Read) {
+            Ok(file) => file,
+            Err(FileOpenError::InsufficientPermissions) => {
+                fail!(from new_config,
+                      with ConfigCreationError::InsufficientPermissions,
+                      "{} since the config file \"{}\" could not be opened due to insufficient permissions.",
+                      msg, config_file);
+            }
+            Err(FileOpenError::FileDoesNotExist) => {
+                fail!(from new_config,
+                      with ConfigCreationError::ConfigFileDoesNotExist,
+                      "{} since the config file \"{}\" does not exist.",
+                      msg, config_file);
+            }
+            Err(e) => {
+                fail!(from new_config,
+                      with ConfigCreationError::UnableToOpenConfigFile,
+                      "{} since the config file \"{}\" could not be open due to an internal error ({:?}).",
+                      msg, config_file, e);
+            }
+        };
 
         let mut contents = String::new();
         fail!(from new_config, when file.read_to_string(&mut contents),
@@ -398,32 +607,42 @@ impl Config {
         Ok(ICEORYX2_CONFIG.get())
     }
 
-    /// Returns the global configuration. If the global configuration was not
-    /// [`Config::setup_global_config_from_file()`] it will load a default config. If
+    /// Returns the global configuration. If the global configuration was not yet loaded it will
+    /// load a default config by looking it up in the system. First it checks if a project local config file
+    /// exists, then if a config file in the user directory exist and then if a global config file exist. If
     /// [`Config::setup_global_config_from_file()`]
     /// is called after this function was called, no file will be loaded since the global default
     /// config was already populated.
     pub fn global_config() -> &'static Config {
+        let origin = "Config::global_config()";
         if !ICEORYX2_CONFIG.is_initialized() {
-            match Config::setup_global_config_from_file(unsafe {
-                &FilePath::new_unchecked(DEFAULT_CONFIG_FILE)
+            let mut is_config_file_set = false;
+            if let Err(e) = Self::iterate_over_config_files(|config_file_path| {
+                match Config::setup_global_config_from_file(&config_file_path) {
+                    Ok(_) => {
+                        is_config_file_set = true;
+                        CallbackProgression::Stop
+                    }
+                    Err(ConfigCreationError::ConfigFileDoesNotExist) => {
+                        CallbackProgression::Continue
+                    }
+                    Err(e) => {
+                        fatal_panic!(from origin,
+                            "Config file found \"{}\" but a failure occurred ({:?}) while reading the content.",
+                            config_file_path, e);
+                    }
+                }
             }) {
-                Ok(_) => (),
-                Err(ConfigCreationError::FailedToOpenConfigFile) => {
-                    debug!(from "Config::global_config()", "Default config file not found, populate config with default values.");
-                    ICEORYX2_CONFIG.set_value(Config::default());
-                }
-                Err(ConfigCreationError::FailedToReadConfigFileContents) => {
-                    warn!(from "Config::global_config()", "Default config file found but unable to read content, populate config with default values.");
-                    ICEORYX2_CONFIG.set_value(Config::default());
-                }
-                Err(ConfigCreationError::UnableToDeserializeContents) => {
-                    warn!(from "Config::global_config()", "Default config file found but unable to load data, populate config with default values.");
-                    ICEORYX2_CONFIG.set_value(Config::default());
-                }
+                fatal_panic!(from origin,
+                    "A failure occurred ({:?}) while looking up the available config files.", e);
+            }
+
+            if !is_config_file_set {
+                warn!(from origin,
+                    "No config file was loaded, a config with default values will be used.");
+                ICEORYX2_CONFIG.set_value(Config::default());
             }
         }
-
         ICEORYX2_CONFIG.get()
     }
 }

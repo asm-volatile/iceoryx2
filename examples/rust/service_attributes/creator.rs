@@ -15,7 +15,8 @@ use iceoryx2::prelude::*;
 
 const CYCLE_TIME: Duration = Duration::from_secs(1);
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn core::error::Error>> {
+    set_log_level_from_env_or(LogLevel::Info);
     let node = NodeBuilder::new().create::<ipc::Service>()?;
 
     let service = node
@@ -25,10 +26,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // define a set of properties that are static for the lifetime
             // of the service
             &AttributeSpecifier::new()
-                .define("dds_service_mapping", "my_funky_service_name")
-                .define("tcp_serialization_format", "cdr")
-                .define("someip_service_mapping", "1/2/3")
-                .define("camera_resolution", "1920x1080"),
+                .define(
+                    &"dds_service_mapping".try_into()?,
+                    &"my_funky_service_name".try_into()?,
+                )
+                .define(&"tcp_serialization_format".try_into()?, &"cdr".try_into()?)
+                .define(&"someip_service_mapping".try_into()?, &"1/2/3".try_into()?)
+                .define(&"camera_resolution".try_into()?, &"1920x1080".try_into()?),
         )?;
 
     let publisher = service.publisher_builder().create()?;

@@ -10,6 +10,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#![warn(clippy::alloc_instead_of_core)]
+#![warn(clippy::std_instead_of_alloc)]
+#![warn(clippy::std_instead_of_core)]
 #![warn(missing_docs)]
 
 //! # iceoryx2
@@ -22,9 +25,9 @@
 //!
 //! - Publish-Subscribe
 //! - Events
-//! - Request-Response (planned)
-//! - Pipeline (planned)
+//! - Request-Response
 //! - Blackboard (planned)
+//! - Pipeline (planned)
 //!
 //! For a comprehensive list of all planned features, please refer to the
 //! [GitHub Roadmap](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/ROADMAP.md).
@@ -63,7 +66,7 @@
 //! use core::time::Duration;
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! const CYCLE_TIME: Duration = Duration::from_secs(1);
 //!
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
@@ -90,7 +93,7 @@
 //! use core::time::Duration;
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! const CYCLE_TIME: Duration = Duration::from_secs(1);
 //!
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
@@ -112,6 +115,84 @@
 //! # }
 //! ```
 //!
+//! ## Request-Response
+//!
+//! This is a simple request-response example where a client sends a request, and the server
+//! responds with multiple replies until the processes are gracefully terminated by the user
+//! with `CTRL+C`
+//!
+//! **Client (Process 1)**
+//!
+//! ```no_run
+//! use core::time::Duration;
+//! use iceoryx2::prelude::*;
+//!
+//! const CYCLE_TIME: Duration = Duration::from_secs(1);
+//!
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
+//! let node = NodeBuilder::new().create::<ipc::Service>()?;
+//!
+//! let service = node
+//!     .service_builder(&"My/Funk/ServiceName".try_into()?)
+//!     .request_response::<u64, u64>()
+//!     .open_or_create()?;
+//!
+//! let client = service.client_builder().create()?;
+//!
+//! // sending first request by using slower, inefficient copy API
+//! let mut pending_response = client.send_copy(1234)?;
+//!
+//! while node.wait(CYCLE_TIME).is_ok() {
+//!     // acquire all responses to our request from our buffer that were sent by the servers
+//!     while let Some(response) = pending_response.receive()? {
+//!         println!("  received response: {:?}", *response);
+//!     }
+//!
+//!     // send all other requests by using zero copy API
+//!     let request = client.loan_uninit()?;
+//!     let request = request.write_payload(5678);
+//!
+//!     pending_response = request.send()?;
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! **Server (Process 2)**
+//!
+//! ```no_run
+//! use core::time::Duration;
+//! use iceoryx2::prelude::*;
+//!
+//! const CYCLE_TIME: Duration = Duration::from_millis(100);
+//!
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
+//! let node = NodeBuilder::new().create::<ipc::Service>()?;
+//!
+//! let service = node
+//!     .service_builder(&"My/Funk/ServiceName".try_into()?)
+//!     .request_response::<u64, u64>()
+//!     .open_or_create()?;
+//!
+//! let server = service.server_builder().create()?;
+//!
+//! while node.wait(CYCLE_TIME).is_ok() {
+//!     while let Some(active_request) = server.receive()? {
+//!         println!("received request: {:?}", *active_request);
+//!
+//!         // use zero copy API, send out some responses to demonstrate the streaming API
+//!         for n in 0..4 {
+//!             let response = active_request.loan_uninit()?;
+//!             let response = response.write_payload(n as _);
+//!             println!("  send response: {:?}", *response);
+//!             response.send()?;
+//!         }
+//!     }
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! ## Events
 //!
 //! Explore a straightforward event setup, where the listener patiently awaits events from the
@@ -124,7 +205,7 @@
 //! use core::time::Duration;
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! const CYCLE_TIME: Duration = Duration::from_secs(1);
 //!
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
@@ -151,7 +232,7 @@
 //! use core::time::Duration;
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! const CYCLE_TIME: Duration = Duration::from_secs(1);
 //!
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
@@ -185,14 +266,18 @@
 //!
 //! ## Publish-Subscribe
 //!
+//! For a detailed documentation see the
+//! [`publish_subscribe::Builder`](crate::service::builder::publish_subscribe::Builder)
+//!
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //!
 //! let service = node.service_builder(&"PubSubQos".try_into()?)
 //!     .publish_subscribe::<u64>()
+//!     // when the subscriber buffer is full the oldest data is overridden with the newest
 //!     .enable_safe_overflow(true)
 //!     // how many samples a subscriber can borrow in parallel
 //!     .subscriber_max_borrowed_samples(2)
@@ -210,12 +295,55 @@
 //! # }
 //! ```
 //!
-//! ## Event
+//! ## Request-Response
+//!
+//! For a detailed documentation see the
+//! [`request_response::Builder`](crate::service::builder::request_response::Builder)
 //!
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
+//! let node = NodeBuilder::new().create::<ipc::Service>()?;
+//!
+//! let service = node.service_builder(&"ReqResQos".try_into()?)
+//!     .request_response::<u64, u64>()
+//!     // overrides the alignment of the request payload
+//!     .request_payload_alignment(Alignment::new(128).unwrap())
+//!     // overrides the alignment of the response payload
+//!     .response_payload_alignment(Alignment::new(128).unwrap())
+//!     // when the server buffer is full the oldest data is overridden with the newest
+//!     .enable_safe_overflow_for_requests(true)
+//!     // when the client buffer is full the oldest data is overridden with the newest
+//!     .enable_safe_overflow_for_responses(true)
+//!     // allows to send requests without expecting an answer
+//!     .enable_fire_and_forget_requests(true)
+//!     // how many requests can a client send in parallel
+//!     .max_active_requests_per_client(2)
+//!     // how many request payload objects can be loaned in parallel
+//!     .max_loaned_requests(1)
+//!     // the max buffer size for incoming responses per request
+//!     .max_response_buffer_size(4)
+//!     // the max number of servers
+//!     .max_servers(2)
+//!     // the max number of clients
+//!     .max_clients(10)
+//!     .create()?;
+//!
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Event
+//!
+//! For a detailed documentation see the
+//! [`event::Builder`](crate::service::builder::event::Builder)
+//!
+//! ```
+//! use core::time::Duration;
+//! use iceoryx2::prelude::*;
+//!
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //!
 //! let event = node.service_builder(&"EventQos".try_into()?)
@@ -228,6 +356,15 @@
 //!     // WARNING: an increased value can have a significant performance impact on some
 //!     //          configurations that use a bitset as event tracking mechanism
 //!     .event_id_max_value(256)
+//!     // optional event id that is emitted when a new notifier was created
+//!     .notifier_created_event(EventId::new(999))
+//!     // optional event id that is emitted when a notifier is dropped
+//!     .notifier_dropped_event(EventId::new(0))
+//!     // optional event id that is emitted when a notifier is identified as dead
+//!     .notifier_dead_event(EventId::new(2000))
+//!     // the deadline of the service defines how long a listener has to wait at most until
+//!     // a signal will be received
+//!     .deadline(Duration::from_secs(1))
 //!     .create()?;
 //! # Ok(())
 //! # }
@@ -243,9 +380,8 @@
 //!
 //! ```
 //! use iceoryx2::prelude::*;
-//! use iceoryx2::service::port_factory::publisher::UnableToDeliverStrategy;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new().create::<ipc::Service>()?;
 //!
 //! let service = node.service_builder(&"My/Funk/ServiceName".try_into()?)
@@ -268,11 +404,11 @@
 //! # Feature Flags
 //!
 //!  * `dev_permissions` - The permissions of all resources will be set to read, write, execute
-//!     for everyone. This shall not be used in production and is meant to be enabled in a docker
-//!     environment with inconsistent user configuration.
+//!    for everyone. This shall not be used in production and is meant to be enabled in a docker
+//!    environment with inconsistent user configuration.
 //!  * `logger_log` - Uses the [log crate](https://crates.io/crates/log) as default log backend
 //!  * `logger_tracing` - Uses the [tracing crate](https://crates.io/crates/tracing) as default log
-//!     backend
+//!    backend
 //!
 //! # Custom Configuration
 //!
@@ -285,6 +421,8 @@
 #[cfg(doctest)]
 mod compiletests;
 
+pub(crate) mod constants;
+
 /// Handles iceoryx2s global configuration
 pub mod config;
 
@@ -296,12 +434,40 @@ pub mod port;
 
 pub(crate) mod raw_sample;
 
+/// Represents a "connection" to a [`Client`](crate::port::client::Client) that corresponds to a
+/// previously received [`RequestMut`](crate::request_mut::RequestMut).
+pub mod active_request;
+
+/// Represents a "connection" to a [`Server`](crate::port::server::Server) that corresponds to a
+/// previously sent [`RequestMut`](crate::request_mut::RequestMut).
+pub mod pending_response;
+
+/// The payload that is sent by a [`Client`](crate::port::client::Client) to a
+/// [`Server`](crate::port::server::Server).
+pub mod request_mut;
+
+/// The uninitialized payload that is sent by a [`Client`](crate::port::client::Client) to a
+/// [`Server`](crate::port::server::Server).
+pub mod request_mut_uninit;
+
+/// The answer a [`Client`](crate::port::client::Client) receives from a
+/// [`Server`](crate::port::server::Server) on a [`RequestMut`](crate::request_mut::RequestMut).
+pub mod response;
+
+/// The answer a [`Server`](crate::port::server::Server) allocates to respond to
+/// a received [`RequestMut`](crate::request_mut::RequestMut) from a
+/// [`Client`](crate::port::client::Client)
+pub mod response_mut;
+
+pub mod response_mut_uninit;
+
 /// The payload that is received by a [`Subscriber`](crate::port::subscriber::Subscriber).
 pub mod sample;
 
 /// The payload that is sent by a [`Publisher`](crate::port::publisher::Publisher).
 pub mod sample_mut;
 
+/// The uninitialized payload that is sent by a [`Publisher`](crate::port::publisher::Publisher).
 pub mod sample_mut_uninit;
 
 /// The foundation of communication the service with its

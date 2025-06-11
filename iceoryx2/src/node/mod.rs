@@ -22,7 +22,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! let node = NodeBuilder::new()
 //!                 .name(&"my_little_node".try_into()?)
 //!                 .create::<ipc::Service>()?;
@@ -48,7 +48,7 @@
 //! ```
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! Node::<ipc::Service>::list(Config::global_config(), |node_state| {
 //!     if let NodeState::<ipc::Service>::Dead(view) = node_state {
 //!         println!("cleanup resources of dead node {:?}", view);
@@ -68,7 +68,7 @@
 //! use core::time::Duration;
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! const CYCLE_TIME: Duration = Duration::from_secs(1);
 //! let node = NodeBuilder::new()
 //!                 .name(&"my_little_node".try_into()?)
@@ -93,7 +93,7 @@
 //! use core::time::Duration;
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! const CYCLE_TIME: Duration = Duration::from_secs(1);
 //! let node = NodeBuilder::new()
 //!                 .name(&"my_little_node".try_into()?)
@@ -115,7 +115,7 @@
 //! use iceoryx2::node::NodeWaitFailure;
 //! use iceoryx2::prelude::*;
 //!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn core::error::Error>> {
 //! const CYCLE_TIME: Duration = Duration::from_secs(1);
 //! let node = NodeBuilder::new()
 //!                 .name(&"my_little_node".try_into()?)
@@ -152,9 +152,15 @@ use crate::service::config_scheme::{
 };
 use crate::service::service_id::ServiceId;
 use crate::service::service_name::ServiceName;
-use crate::service::{self, remove_service_tag};
+use crate::service::{
+    self, remove_service_tag, remove_static_service_config, ServiceRemoveNodeError,
+};
 use crate::signal_handling_mode::SignalHandlingMode;
 use crate::{config::Config, service::config_scheme::node_details_config};
+use core::cell::UnsafeCell;
+use core::marker::PhantomData;
+use core::sync::atomic::Ordering;
+use core::time::Duration;
 use iceoryx2_bb_container::semantic_string::SemanticString;
 use iceoryx2_bb_elementary::CallbackProgression;
 use iceoryx2_bb_lock_free::mpmc::container::ContainerHandle;
@@ -169,12 +175,12 @@ use iceoryx2_cal::{
     monitoring::*, named_concept::NamedConceptListError, serialize::*, static_storage::*,
 };
 use iceoryx2_pal_concurrency_sync::iox_atomic::IoxAtomicBool;
-use std::cell::UnsafeCell;
+
+extern crate alloc;
+use alloc::sync::Arc;
+
 use std::collections::HashMap;
-use std::marker::PhantomData;
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Mutex;
 
 /// The system-wide unique id of a [`Node`]
 #[derive(
@@ -213,13 +219,13 @@ pub enum NodeCreationFailure {
     InternalError,
 }
 
-impl std::fmt::Display for NodeCreationFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for NodeCreationFailure {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "NodeCreationFailure::{:?}", self)
     }
 }
 
-impl std::error::Error for NodeCreationFailure {}
+impl core::error::Error for NodeCreationFailure {}
 
 /// The failures that can occur when a list of [`NodeState`]s is created with [`Node::list()`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -230,13 +236,13 @@ pub enum NodeWaitFailure {
     TerminationRequest,
 }
 
-impl std::fmt::Display for NodeWaitFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for NodeWaitFailure {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "NodeWaitFailure::{:?}", self)
     }
 }
 
-impl std::error::Error for NodeWaitFailure {}
+impl core::error::Error for NodeWaitFailure {}
 
 /// The failures that can occur when a list of [`NodeState`]s is created with [`Node::list()`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -249,13 +255,13 @@ pub enum NodeListFailure {
     InternalError,
 }
 
-impl std::fmt::Display for NodeListFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for NodeListFailure {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "NodeListFailure::{:?}", self)
     }
 }
 
-impl std::error::Error for NodeListFailure {}
+impl core::error::Error for NodeListFailure {}
 
 /// Failures of [`DeadNodeView::remove_stale_resources()`] that occur when the stale resources of
 /// a dead [`Node`] are removed.
@@ -267,15 +273,17 @@ pub enum NodeCleanupFailure {
     InternalError,
     /// The stale resources of a dead [`Node`] could not be removed since the process does not have sufficient permissions.
     InsufficientPermissions,
+    /// Trying to cleanup resources from a dead [`Node`] which was using a different iceoryx2 version.
+    VersionMismatch,
 }
 
-impl std::fmt::Display for NodeCleanupFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for NodeCleanupFailure {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         std::write!(f, "NodeCleanupFailure::{:?}", self)
     }
 }
 
-impl std::error::Error for NodeCleanupFailure {}
+impl core::error::Error for NodeCleanupFailure {}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum NodeReadStorageFailure {
@@ -519,12 +527,61 @@ impl<Service: service::Service> DeadNodeView<Service> {
         }
         let cleaner = cleaner.unwrap();
 
+        let mut cleanup_failure = Ok(());
         let remove_node_from_service = |service_id: &ServiceId| {
-            if Service::__internal_remove_node_from_service(self.id(), service_id, config).is_ok() {
-                if let Err(e) = remove_service_tag::<Service>(self.id(), service_id, config) {
-                    debug!(from self,
-                                    "The service tag coult not be removed from the dead node ({:?}).",
+            match Service::__internal_remove_node_from_service(self.id(), service_id, config) {
+                Ok(()) => {
+                    if let Err(e) = remove_service_tag::<Service>(self.id(), service_id, config) {
+                        debug!(from self,
+                                    "The service tag could not be removed from the dead node ({:?}).",
                                     e);
+                    }
+                }
+                Err(ServiceRemoveNodeError::VersionMismatch) => {
+                    cleanup_failure = Err(NodeCleanupFailure::VersionMismatch);
+                    debug!(from self,
+                        "{msg} since the dead node was using a different iceoryx2 version.");
+                }
+                Err(ServiceRemoveNodeError::ServiceInCorruptedState) => {
+                    debug!(from self,
+                        "{msg} since the service itself is corrupted. Trying to remove the corrupted remainders of the service.");
+                    match unsafe {
+                        remove_static_service_config::<Service>(
+                            config,
+                            &service_id.0.clone().into(),
+                        )
+                    } {
+                        Ok(v) => {
+                            if let Err(e) =
+                                remove_service_tag::<Service>(self.id(), service_id, config)
+                            {
+                                debug!(from self,
+                                    "The service tag could not be removed from the dead node ({:?}).",
+                                    e);
+                            }
+
+                            if v {
+                                debug!(from self, "Successfully removed corrupted static service config.");
+                            } else {
+                                debug!(from self, "Corrupted static service config no longer exists, another instance might have cleaned it up.");
+                            }
+                        }
+                        Err(NamedConceptRemoveError::InsufficientPermissions) => {
+                            cleanup_failure = Err(NodeCleanupFailure::InsufficientPermissions);
+                            debug!(from self,
+                                "{msg} since the corrupted service remainders to could not be removed due to insufficient permissions.");
+                        }
+                        Err(e) => {
+                            cleanup_failure = Err(NodeCleanupFailure::InternalError);
+                            debug!(from self,
+                                "{msg} since the corrupted service remainders to could not be removed due to an internal error ({:?}).", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    cleanup_failure = Err(NodeCleanupFailure::InternalError);
+                    debug!(from self,
+                        "{msg} due to an internal error while removing the node from the service ({:?}).", e);
                 }
             }
             CallbackProgression::Continue
@@ -539,6 +596,8 @@ impl<Service: service::Service> DeadNodeView<Service> {
                     "{} since the service tags could not be read ({:?}).", msg, e);
             }
         };
+
+        cleanup_failure?;
 
         match remove_node::<Service>(*self.id(), config) {
             Ok(_) => {
@@ -1125,7 +1184,7 @@ impl<Service: service::Service> Node<Service> {
 /// ```
 /// use iceoryx2::prelude::*;
 ///
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # fn main() -> Result<(), Box<dyn core::error::Error>> {
 /// let node = NodeBuilder::new()
 ///                 .name(&"my_little_node".try_into()?)
 ///                 .create::<ipc::Service>()?;

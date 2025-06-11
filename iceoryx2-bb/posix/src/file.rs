@@ -45,6 +45,7 @@ use crate::group::GroupError;
 use crate::handle_errno;
 use crate::ownership::OwnershipBuilder;
 use crate::user::UserError;
+use core::fmt::Debug;
 use iceoryx2_bb_container::semantic_string::SemanticString;
 use iceoryx2_bb_elementary::enum_gen;
 use iceoryx2_bb_log::{fail, trace, warn};
@@ -52,7 +53,6 @@ use iceoryx2_bb_system_types::file_path::FilePath;
 use iceoryx2_pal_posix::posix::errno::Errno;
 use iceoryx2_pal_posix::posix::Struct;
 use iceoryx2_pal_posix::*;
-use std::fmt::Debug;
 
 pub use crate::creation_mode::CreationMode;
 pub use crate::{access_mode::AccessMode, permission::*};
@@ -71,6 +71,7 @@ enum_gen! { FileAccessError
   entry:
     LoopInSymbolicLinks,
     MaxSupportedPathLengthExceeded,
+    InsufficientPermissions,
     UnknownError(i32)
 }
 
@@ -276,7 +277,7 @@ impl FileBuilder {
     /// Creates a new FileBuilder and sets the path of the file which should be opened.
     pub fn new(file_path: &FilePath) -> Self {
         FileBuilder {
-            file_path: *file_path,
+            file_path: file_path.clone(),
             access_mode: AccessMode::Read,
             permission: Permission::OWNER_ALL,
             has_ownership: false,
@@ -430,11 +431,11 @@ pub struct File {
 impl Drop for File {
     fn drop(&mut self) {
         if self.has_ownership {
-            match self.path {
+            match &self.path {
                 None => {
                     warn!(from self, "Files created from file descriptors cannot remove themselves.")
                 }
-                Some(p) => match File::remove(&p) {
+                Some(p) => match File::remove(p) {
                     Ok(false) | Err(_) => {
                         warn!(from self, "Failed to remove owned file");
                     }
@@ -488,7 +489,7 @@ impl File {
 
         if let Some(v) = file_descriptor {
             return Ok(File {
-                path: Some(config.file_path),
+                path: Some(config.file_path.clone()),
                 file_descriptor: v,
                 has_ownership: config.has_ownership,
             });
@@ -710,18 +711,20 @@ impl File {
             success Errno::ENOENT => false,
             Errno::ELOOP => (LoopInSymbolicLinks, "{} \"{}\" exists since a loop exists in the symbolic links.", msg, path),
             Errno::ENAMETOOLONG => (MaxSupportedPathLengthExceeded, "{} \"{}\" exists since it is longer than the maximum path name length", msg, path),
+            Errno::EACCES => (InsufficientPermissions, "{} \"{}\" due to insufficient permissions.", msg, path),
+            Errno::EPERM => (InsufficientPermissions, "{} \"{}\" due to insufficient permissions.", msg, path),
             v => (UnknownError(v as i32), "{} \"{}\" exists caused by an unknown error ({}).", msg, path, v)
         );
     }
 
     /// Deletes the file managed by self
     pub fn remove_self(self) -> Result<bool, FileRemoveError> {
-        match self.path {
+        match &self.path {
             None => {
                 warn!(from self, "Files created from file descriptors cannot remove themselves.");
                 Ok(false)
             }
-            Some(p) => File::remove(&p),
+            Some(p) => File::remove(p),
         }
     }
 

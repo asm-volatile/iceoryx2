@@ -10,6 +10,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#![warn(clippy::alloc_instead_of_core)]
+#![warn(clippy::std_instead_of_alloc)]
+#![warn(clippy::std_instead_of_core)]
+
 //! Simplistic logger. It has 6 [`LogLevel`]s which can be set via [`set_log_level()`] and read via
 //! [`get_log_level()`].
 //!
@@ -145,10 +149,11 @@ pub mod fail;
 pub mod logger;
 
 use iceoryx2_pal_concurrency_sync::iox_atomic::IoxAtomicU8;
-use std::{
-    fmt::Arguments,
-    sync::{atomic::Ordering, Once},
-};
+
+use core::{fmt::Arguments, sync::atomic::Ordering};
+use std::sync::Once;
+
+use std::env;
 
 #[cfg(feature = "logger_tracing")]
 static DEFAULT_LOGGER: logger::tracing::Logger = logger::tracing::Logger::new();
@@ -159,10 +164,10 @@ static DEFAULT_LOGGER: logger::log::Logger = logger::log::Logger::new();
 #[cfg(not(any(feature = "logger_log", feature = "logger_tracing")))]
 static DEFAULT_LOGGER: logger::console::Logger = logger::console::Logger::new();
 
-const DEFAULT_LOG_LEVEL: u8 = LogLevel::Info as u8;
+const DEFAULT_LOG_LEVEL: LogLevel = LogLevel::Info;
 
 static mut LOGGER: Option<&'static dyn Log> = None;
-static LOG_LEVEL: IoxAtomicU8 = IoxAtomicU8::new(DEFAULT_LOG_LEVEL);
+static LOG_LEVEL: IoxAtomicU8 = IoxAtomicU8::new(DEFAULT_LOG_LEVEL as u8);
 static INIT: Once = Once::new();
 
 pub trait Log: Send + Sync {
@@ -180,6 +185,44 @@ pub enum LogLevel {
     Warn = 3,
     Error = 4,
     Fatal = 5,
+}
+
+impl LogLevel {
+    fn from_str_fuzzy(log_level_string: &str, log_level_fallback: LogLevel) -> LogLevel {
+        match log_level_string.to_lowercase().as_str() {
+            "trace" => LogLevel::Trace,
+            "debug" => LogLevel::Debug,
+            "info" => LogLevel::Info,
+            "warn" => LogLevel::Warn,
+            "error" => LogLevel::Error,
+            "fatal" => LogLevel::Fatal,
+            _ => {
+                println!(
+                    "Invalid value for 'IOX2_LOG_LEVEL' environment variable!\
+                \nFound: {:?}\
+                \nAllowed is one of: fatal, error, warn, info, debug, trace\
+                \nSetting log level as : {:?}",
+                    log_level_string, log_level_fallback
+                );
+                log_level_fallback
+            }
+        }
+    }
+}
+
+/// Sets the log level by reading environment variable "IOX2_LOG_LEVEL" or default it wiht LogLevel::INFO
+pub fn set_log_level_from_env_or_default() {
+    set_log_level_from_env_or(DEFAULT_LOG_LEVEL);
+}
+
+/// Sets the log level by reading environment variable "IOX2_LOG_LEVEL", and if the environment variable
+/// doesn't exits it sets it with a user-defined logging level
+pub fn set_log_level_from_env_or(v: LogLevel) {
+    let log_level = env::var("IOX2_LOG_LEVEL")
+        .ok()
+        .map(|s| LogLevel::from_str_fuzzy(&s, v))
+        .unwrap_or(v);
+    set_log_level(log_level);
 }
 
 /// Sets the current log level. This is ignored for external frameworks like `log` or `tracing`.
@@ -201,7 +244,6 @@ pub fn set_logger<T: Log + 'static>(value: &'static T) -> bool {
         unsafe { LOGGER = Some(value) };
         set_logger_success = true;
     });
-
     set_logger_success
 }
 
@@ -230,5 +272,7 @@ pub fn get_logger() -> &'static dyn Log {
 
 #[doc(hidden)]
 pub fn __internal_print_log_msg(log_level: LogLevel, origin: Arguments, args: Arguments) {
-    get_logger().log(log_level, origin, args)
+    if get_log_level() <= log_level as u8 {
+        get_logger().log(log_level, origin, args)
+    }
 }
